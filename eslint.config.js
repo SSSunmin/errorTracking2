@@ -19,5 +19,15 @@ export default tseslint.config(
   {
     files: ["eslint.config.js", "vitest.config.ts"],
     extends: [tseslint.configs.disableTypeChecked]
+  },
+  {
+    files: ["packages/server/prisma/**/*.ts"],
+    extends: [tseslint.configs.disableTypeChecked],
+    languageOptions: {
+      parserOptions: {
+        project: false,
+        projectService: false
+      }
+    }
   }
 );

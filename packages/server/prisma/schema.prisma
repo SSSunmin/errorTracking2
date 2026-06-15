@@ -1,0 +1,153 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum IssueLevel {
+  debug
+  info
+  warning
+  error
+  fatal
+}
+
+enum IssueStatus {
+  unresolved
+  resolved
+  ignored
+}
+
+enum AlertChannel {
+  email
+  slack
+}
+
+enum AlertCondition {
+  new_issue
+  regression
+  event_threshold
+}
+
+model User {
+  id            String         @id @default(cuid())
+  email         String         @unique
+  passwordHash  String
+  name          String?
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  projects      Project[]
+  refreshTokens RefreshToken[]
+}
+
+model Project {
+  id         String       @id @default(cuid())
+  name       String
+  slug       String       @unique
+  platform   String       @default("javascript-browser")
+  ownerId    String
+  owner      User         @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  keys       ProjectKey[]
+  issues     Issue[]
+  events     Event[]
+  alertRules AlertRule[]
+
+  @@index([ownerId])
+}
+
+model ProjectKey {
+  id         String    @id @default(cuid())
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  publicKey  String    @unique
+  label      String?
+  isActive   Boolean   @default(true)
+  lastUsedAt DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@index([projectId])
+}
+
+model Issue {
+  id          String      @id @default(cuid())
+  projectId   String
+  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fingerprint String
+  title       String
+  culprit     String?
+  level       IssueLevel  @default(error)
+  status      IssueStatus @default(unresolved)
+  timesSeen   Int         @default(0)
+  firstSeen   DateTime
+  lastSeen    DateTime
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  events      Event[]
+
+  @@unique([projectId, fingerprint])
+  @@index([projectId, status])
+  @@index([projectId, lastSeen])
+}
+
+model Event {
+  id             String     @id @default(cuid())
+  issueId        String
+  issue          Issue      @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  projectId      String
+  project        Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  message        String?
+  exceptionType  String?
+  exceptionValue String?
+  stacktrace     Json?
+  breadcrumbs    Json?
+  tags           Json?
+  userContext    Json?
+  contexts       Json?
+  level          IssueLevel
+  environment    String?
+  release        String?
+  sdkName        String?
+  sdkVersion     String?
+  requestUrl     String?
+  userAgent      String?
+  timestamp      DateTime
+  receivedAt     DateTime   @default(now())
+
+  @@index([issueId, receivedAt])
+  @@index([projectId, receivedAt])
+}
+
+model AlertRule {
+  id            String         @id @default(cuid())
+  projectId     String
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  name          String
+  channel       AlertChannel
+  target        String
+  condition     AlertCondition
+  threshold     Int?
+  windowMinutes Int?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([projectId])
+}
+
+model RefreshToken {
+  id                  String    @id @default(cuid())
+  userId              String
+  user                User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tokenHash           String    @unique
+  expiresAt           DateTime
+  revokedAt           DateTime?
+  replacedByTokenHash String?
+  createdAt           DateTime  @default(now())
+
+  @@index([userId])
+}
