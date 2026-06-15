@@ -1,0 +1,18 @@
+{
+  "files": [],
+  "compilerOptions": {
+    "baseUrl": ".",
+    "paths": {
+      "@mini-sentry/server": ["packages/server/src/index.ts"],
+      "@mini-sentry/sdk": ["packages/sdk/src/index.ts"],
+      "@mini-sentry/dashboard": ["packages/dashboard/src/index.ts"],
+      "@mini-sentry/demo-app": ["examples/demo-app/src/index.ts"]
+    }
+  },
+  "references": [
+    { "path": "./packages/server" },
+    { "path": "./packages/sdk" },
+    { "path": "./packages/dashboard" },
+    { "path": "./examples/demo-app" }
+  ]
+}
