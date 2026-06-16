@@ -19,6 +19,7 @@ const baseAlertRuleInputSchema = z.object({
   condition: alertConditionSchema,
   threshold: z.number().int().positive().max(1_000).optional(),
   windowMinutes: z.number().int().positive().max(24 * 60).optional(),
+  cooldownMinutes: z.number().int().positive().max(24 * 60).optional(),
   isActive: z.boolean().default(true)
 });
 
@@ -87,6 +88,7 @@ export const alertRuleSchema = z.object({
   condition: alertConditionSchema,
   threshold: z.number().int().nullable(),
   windowMinutes: z.number().int().nullable(),
+  cooldownMinutes: z.number().int().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string()

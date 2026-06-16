@@ -20,7 +20,7 @@ export interface AlertDispatchOptions {
   notifier?: Notifier;
 }
 
-const regressionCooldownMinutes = 60;
+const DEFAULT_REGRESSION_COOLDOWN_MINUTES = 60;
 
 const toEvaluationRule = (rule: AlertRule): AlertEvaluationRule => ({
   id: rule.id,
@@ -58,20 +58,23 @@ const getEventCountsByWindowMinutes = async (
 
 const getDedupeSince = (
   condition: AlertCondition,
-  windowMinutes: number | null
+  windowMinutes: number | null,
+  cooldownMinutes: number | null
 ): Date | null => {
   if (condition === "new_issue") {
     return null;
   }
 
-  const cooldownMinutes =
-    condition === "regression" ? regressionCooldownMinutes : windowMinutes;
+  const dedupeMinutes =
+    condition === "regression"
+      ? cooldownMinutes ?? DEFAULT_REGRESSION_COOLDOWN_MINUTES
+      : windowMinutes;
 
-  if (cooldownMinutes === null) {
+  if (dedupeMinutes === null) {
     return null;
   }
 
-  return new Date(Date.now() - cooldownMinutes * 60 * 1_000);
+  return new Date(Date.now() - dedupeMinutes * 60 * 1_000);
 };
 
 // Atomically decide whether to notify AND reserve the slot, so two concurrent
@@ -84,7 +87,11 @@ const claimNotification = async (
   rule: AlertRule,
   issueId: string
 ): Promise<string | null> => {
-  const since = getDedupeSince(rule.condition, rule.windowMinutes);
+  const since = getDedupeSince(
+    rule.condition,
+    rule.windowMinutes,
+    rule.cooldownMinutes
+  );
   const lockKey = `${rule.id}:${issueId}`;
 
   return prisma.$transaction(async (tx) => {

@@ -20,6 +20,7 @@ export const AlertsPage = (): ReactNode => {
   const [condition, setCondition] = useState<AlertCondition>("new_issue");
   const [threshold, setThreshold] = useState("5");
   const [windowMinutes, setWindowMinutes] = useState("60");
+  const [cooldownMinutes, setCooldownMinutes] = useState("60");
   const [error, setError] = useState<string | null>(null);
 
   const invalidate = (): void => {
@@ -35,6 +36,9 @@ export const AlertsPage = (): ReactNode => {
         condition,
         ...(condition === "event_threshold"
           ? { threshold: Number(threshold), windowMinutes: Number(windowMinutes) }
+          : {}),
+        ...(condition === "regression"
+          ? { cooldownMinutes: Number(cooldownMinutes) }
           : {})
       }),
     onSuccess: () => {
@@ -152,6 +156,19 @@ export const AlertsPage = (): ReactNode => {
             </label>
           </>
         )}
+        {condition === "regression" && (
+          <label>
+            쿨다운(분)
+            <input
+              type="number"
+              min={1}
+              value={cooldownMinutes}
+              onChange={(e) => {
+                setCooldownMinutes(e.target.value);
+              }}
+            />
+          </label>
+        )}
         {error && <p className="error">{error}</p>}
         <button type="submit" className="primary" disabled={create.isPending}>
           규칙 추가
@@ -173,6 +190,9 @@ export const AlertsPage = (): ReactNode => {
                 {conditionLabels[rule.condition]}
                 {rule.condition === "event_threshold"
                   ? ` (${String(rule.windowMinutes)}분 내 ${String(rule.threshold)}건)`
+                  : ""}
+                {rule.condition === "regression"
+                  ? ` · 쿨다운 ${String(rule.cooldownMinutes ?? 60)}분`
                   : ""}
               </p>
             </div>

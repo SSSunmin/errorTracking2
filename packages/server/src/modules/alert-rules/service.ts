@@ -22,6 +22,7 @@ interface AlertRuleDto {
   condition: AlertRule["condition"];
   threshold: number | null;
   windowMinutes: number | null;
+  cooldownMinutes: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -36,6 +37,7 @@ const toAlertRuleDto = (rule: AlertRule): AlertRuleDto => ({
   condition: rule.condition,
   threshold: rule.threshold,
   windowMinutes: rule.windowMinutes,
+  cooldownMinutes: rule.cooldownMinutes,
   isActive: rule.isActive,
   createdAt: rule.createdAt.toISOString(),
   updatedAt: rule.updatedAt.toISOString()
@@ -78,6 +80,11 @@ const normalizeThresholdFields = (
         windowMinutes: null
       };
 
+const normalizeCooldownMinutes = (
+  condition: AlertCondition,
+  cooldownMinutes: number | undefined
+): number | null => (condition === "regression" ? cooldownMinutes ?? null : null);
+
 const parseMergedAlertRule = (
   rule: Pick<
     AlertRule,
@@ -87,6 +94,7 @@ const parseMergedAlertRule = (
     | "condition"
     | "threshold"
     | "windowMinutes"
+    | "cooldownMinutes"
     | "isActive"
   >
 ): {
@@ -96,12 +104,14 @@ const parseMergedAlertRule = (
   condition: AlertCondition;
   threshold: number | null;
   windowMinutes: number | null;
+  cooldownMinutes: number | null;
   isActive: boolean;
 } => {
   const parsed = mergedAlertRuleSchema.safeParse({
     ...rule,
     threshold: rule.threshold ?? undefined,
-    windowMinutes: rule.windowMinutes ?? undefined
+    windowMinutes: rule.windowMinutes ?? undefined,
+    cooldownMinutes: rule.cooldownMinutes ?? undefined
   });
 
   if (!parsed.success) {
@@ -117,6 +127,10 @@ const parseMergedAlertRule = (
       parsed.data.condition as AlertCondition,
       parsed.data.threshold,
       parsed.data.windowMinutes
+    ),
+    cooldownMinutes: normalizeCooldownMinutes(
+      parsed.data.condition as AlertCondition,
+      parsed.data.cooldownMinutes
     ),
     isActive: parsed.data.isActive
   };
@@ -159,6 +173,7 @@ export const createAlertRule = async (
     condition: input.condition as AlertCondition,
     threshold: input.threshold ?? null,
     windowMinutes: input.windowMinutes ?? null,
+    cooldownMinutes: input.cooldownMinutes ?? null,
     isActive: input.isActive
   });
 
@@ -171,6 +186,7 @@ export const createAlertRule = async (
         condition: parsed.condition,
         threshold: parsed.threshold,
         windowMinutes: parsed.windowMinutes,
+        cooldownMinutes: parsed.cooldownMinutes,
         isActive: parsed.isActive,
         project: {
           connect: {
@@ -242,6 +258,7 @@ export const updateAlertRule = async (
         condition: input.condition ?? existing.condition,
         threshold: input.threshold ?? existing.threshold,
         windowMinutes: input.windowMinutes ?? existing.windowMinutes,
+        cooldownMinutes: input.cooldownMinutes ?? existing.cooldownMinutes,
         isActive: input.isActive ?? existing.isActive
       });
 

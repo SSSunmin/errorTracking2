@@ -99,6 +99,7 @@ export interface AlertRule {
   condition: AlertCondition;
   threshold: number | null;
   windowMinutes: number | null;
+  cooldownMinutes: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -275,6 +276,7 @@ export const api = {
       condition: AlertCondition;
       threshold?: number;
       windowMinutes?: number;
+      cooldownMinutes?: number;
     }
   ): Promise<{ alertRule: AlertRule }> =>
     request(`/api/projects/${projectId}/alert-rules`, { method: "POST", body: input }),

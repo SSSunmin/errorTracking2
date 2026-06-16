@@ -139,6 +139,7 @@ model AlertRule {
   condition     AlertCondition
   threshold     Int?
   windowMinutes Int?
+  cooldownMinutes Int?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt

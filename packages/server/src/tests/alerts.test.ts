@@ -293,6 +293,49 @@ describe("alert rule API", () => {
     expect(patched.statusCode).toBe(400);
   });
 
+  test("stores cooldown only for regression rules", async () => {
+    const session = await register("alert-cooldown@example.com");
+    const project = await createProjectViaApi(session);
+
+    const regression = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        name: "Regression",
+        channel: "email",
+        target: "ops@example.com",
+        condition: "regression",
+        cooldownMinutes: 30
+      }
+    });
+    expect(regression.statusCode).toBe(201);
+    expect(
+      alertRuleResponseSchema.parse(regression.json<unknown>()).alertRule
+        .cooldownMinutes
+    ).toBe(30);
+
+    const threshold = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        name: "Threshold",
+        channel: "email",
+        target: "threshold@example.com",
+        condition: "event_threshold",
+        threshold: 2,
+        windowMinutes: 60,
+        cooldownMinutes: 30
+      }
+    });
+    expect(threshold.statusCode).toBe(201);
+    expect(
+      alertRuleResponseSchema.parse(threshold.json<unknown>()).alertRule
+        .cooldownMinutes
+    ).toBeNull();
+  });
+
   test("enforces a per-project alert rule cap", async () => {
     const session = await register("alert-cap@example.com");
     const project = await createProjectViaApi(session);
@@ -381,6 +424,66 @@ describe("alert evaluation and dispatch", () => {
     expect(issue.status).toBe("unresolved");
     expect(notifier.sends).toHaveLength(1);
     expect(notifier.sends[0]?.channel).toBe("email");
+  });
+
+  test("regression dedupe uses the rule cooldown", async () => {
+    const projectId = await createProject();
+    const rule = await prisma.alertRule.create({
+      data: {
+        projectId,
+        name: "Regression",
+        channel: "email",
+        target: "ops@example.com",
+        condition: "regression",
+        cooldownMinutes: 1
+      }
+    });
+    const notifier = new MockNotifier();
+
+    const first = await processEvent(projectId, makePayload("Cooldown boom"));
+    await prisma.issue.update({
+      where: { id: first.issueId },
+      data: { status: "resolved" }
+    });
+
+    const firstRegression = await processEvent(
+      projectId,
+      makePayload("Cooldown boom")
+    );
+    await dispatch(projectId, firstRegression, notifier);
+    expect(notifier.sends).toHaveLength(1);
+
+    await prisma.issue.update({
+      where: { id: first.issueId },
+      data: { status: "resolved" }
+    });
+    const immediateRegression = await processEvent(
+      projectId,
+      makePayload("Cooldown boom")
+    );
+    await dispatch(projectId, immediateRegression, notifier);
+    expect(notifier.sends).toHaveLength(1);
+
+    await prisma.notification.updateMany({
+      where: {
+        alertRuleId: rule.id,
+        issueId: first.issueId
+      },
+      data: {
+        sentAt: new Date(Date.now() - 2 * 60 * 1_000)
+      }
+    });
+    await prisma.issue.update({
+      where: { id: first.issueId },
+      data: { status: "resolved" }
+    });
+    const delayedRegression = await processEvent(
+      projectId,
+      makePayload("Cooldown boom")
+    );
+    await dispatch(projectId, delayedRegression, notifier);
+
+    expect(notifier.sends).toHaveLength(2);
   });
 
   test("event_threshold fires at threshold and dedupes within the window", async () => {
