@@ -4,8 +4,18 @@ import { z } from "zod/v4";
 
 import { buildApp } from "../app.js";
 import { env } from "../config/env.js";
+import { buildIngestJobOptions, type IngestEventJobData } from "../lib/queue.js";
 import { refreshCookieName } from "../modules/auth/routes.js";
 import { tokenResponseSchema } from "../modules/auth/schemas.js";
+import { processEvent } from "../modules/events/process.js";
+import type { EventPayload } from "../modules/events/schemas.js";
+import {
+  issueDetailResponseSchema,
+  issueEventsResponseSchema,
+  issueStatsResponseSchema,
+  listIssuesResponseSchema,
+  updateIssueResponseSchema
+} from "../modules/issues/schemas.js";
 import {
   createProjectResponseSchema,
   listProjectKeysResponseSchema,
@@ -37,6 +47,8 @@ interface AuthSession {
 }
 
 let app: FastifyInstance;
+let enqueueCalls: IngestEventJobData[];
+const validClientEventId = "11111111-1111-4111-8111-111111111111";
 
 const getRefreshCookie = (response: CookieResponse): string => {
   const cookie = response.cookies.find(
@@ -81,8 +93,45 @@ const authHeaders = (session: AuthSession): { authorization: string } => ({
 const expectedDsn = (publicKey: string, projectId: string): string =>
   `${env.DSN_SCHEME}://${publicKey}@${env.DSN_HOST}/${projectId}`;
 
+const currentTimestamp = (): string => new Date().toISOString();
+
+const nestObject = (depth: number): unknown => {
+  let value: unknown = "leaf";
+  for (let index = 0; index < depth; index += 1) {
+    value = { child: value };
+  }
+
+  return value;
+};
+
+const createProjectViaApi = async (
+  session: AuthSession,
+  name = "Browser App"
+): Promise<z.infer<typeof createProjectResponseSchema>> => {
+  const response = await app.inject({
+    method: "POST",
+    url: "/api/projects",
+    headers: authHeaders(session),
+    payload: {
+      name,
+      platform: "javascript-browser"
+    }
+  });
+
+  expect(response.statusCode).toBe(201);
+  return createProjectResponseSchema.parse(response.json<unknown>());
+};
+
 beforeEach(async () => {
-  app = buildApp();
+  enqueueCalls = [];
+  app = buildApp({
+    ingest: {
+      enqueue: (data) => {
+        enqueueCalls.push(data);
+        return Promise.resolve(data.payload.eventId ?? "queued-event");
+      }
+    }
+  });
   await app.ready();
 });
 
@@ -224,6 +273,214 @@ describe("auth", () => {
     });
 
     expect(refreshResponse.statusCode).toBe(401);
+  });
+});
+
+describe("ingest", () => {
+  const validEventPayload = (): EventPayload => ({
+    eventId: validClientEventId,
+    timestamp: currentTimestamp(),
+    level: "error",
+    message: "Browser failed"
+  });
+
+  test("valid DSN key enqueues an event", async () => {
+    const owner = await register("ingest-owner@example.com");
+    const created = await createProjectViaApi(owner, "Ingest Project");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers: {
+        "x-mini-sentry-key": created.key.publicKey,
+        origin: "https://customer.example"
+      },
+      payload: validEventPayload()
+    });
+
+    expect(response.statusCode).toBe(202);
+    expect(response.headers["access-control-allow-origin"]).toBe("*");
+    expect(response.json<unknown>()).toEqual({ id: validClientEventId });
+    expect(enqueueCalls).toHaveLength(1);
+    expect(enqueueCalls[0]?.projectId).toBe(created.project.id);
+    expect(enqueueCalls[0]?.payload.message).toBe("Browser failed");
+  });
+
+  test("missing, invalid, inactive, and wrong-project keys are rejected", async () => {
+    const owner = await register("ingest-reject@example.com");
+    const first = await createProjectViaApi(owner, "First Ingest");
+    const second = await createProjectViaApi(owner, "Second Ingest");
+
+    const missing = await app.inject({
+      method: "POST",
+      url: `/api/${first.project.id}/store`,
+      payload: validEventPayload()
+    });
+    expect(missing.statusCode).toBe(401);
+    expect(errorResponseSchema.parse(missing.json<unknown>()).error.message).toBe(
+      "Invalid project key"
+    );
+
+    const invalid = await app.inject({
+      method: "POST",
+      url: `/api/${first.project.id}/store?key=not-a-key`,
+      payload: validEventPayload()
+    });
+    expect(invalid.statusCode).toBe(401);
+    expect(errorResponseSchema.parse(invalid.json<unknown>()).error.message).toBe(
+      "Invalid project key"
+    );
+
+    const wrongProject = await app.inject({
+      method: "POST",
+      url: `/api/${second.project.id}/store?key=${first.key.publicKey}`,
+      payload: validEventPayload()
+    });
+    expect(wrongProject.statusCode).toBe(401);
+    expect(
+      errorResponseSchema.parse(wrongProject.json<unknown>()).error.message
+    ).toBe("Invalid project key");
+
+    const disableResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${first.project.id}/keys/${first.key.id}`,
+      headers: authHeaders(owner),
+      payload: {
+        isActive: false
+      }
+    });
+    expect(disableResponse.statusCode).toBe(200);
+
+    const inactive = await app.inject({
+      method: "POST",
+      url: `/api/${first.project.id}/store`,
+      headers: {
+        "x-mini-sentry-key": first.key.publicKey
+      },
+      payload: validEventPayload()
+    });
+    expect(inactive.statusCode).toBe(401);
+    expect(errorResponseSchema.parse(inactive.json<unknown>()).error.message).toBe(
+      "Invalid project key"
+    );
+  });
+
+  test("bad payload returns 400", async () => {
+    const owner = await register("ingest-bad-payload@example.com");
+    const created = await createProjectViaApi(owner, "Bad Payload");
+
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers: {
+        "x-mini-sentry-key": created.key.publicKey
+      },
+      payload: {
+        message: "missing timestamp"
+      }
+    });
+
+    expect(response.statusCode).toBe(400);
+  });
+
+  test("rejects deep JSON, too many frames, empty events, and oversized bodies", async () => {
+    const owner = await register("ingest-limits@example.com");
+    const created = await createProjectViaApi(owner, "Limits");
+    const headers = {
+      "content-type": "application/json",
+      "x-mini-sentry-key": created.key.publicKey
+    };
+
+    const deepNested = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers,
+      payload: {
+        ...validEventPayload(),
+        tags: {
+          nested: nestObject(9)
+        }
+      }
+    });
+    expect(deepNested.statusCode).toBe(400);
+
+    const tooManyFrames = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers,
+      payload: {
+        ...validEventPayload(),
+        exception: {
+          type: "Error",
+          value: "too many frames",
+          stacktrace: {
+            frames: Array.from({ length: 101 }, () => ({ filename: "app.js" }))
+          }
+        }
+      }
+    });
+    expect(tooManyFrames.statusCode).toBe(400);
+
+    const emptyEvent = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers,
+      payload: {
+        timestamp: currentTimestamp()
+      }
+    });
+    expect(emptyEvent.statusCode).toBe(400);
+
+    const oversized = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers,
+      payload: JSON.stringify({
+        ...validEventPayload(),
+        message: "x".repeat(260 * 1_024)
+      })
+    });
+    expect(oversized.statusCode).toBe(413);
+  });
+
+  test("client eventId is used as the BullMQ idempotency job id", () => {
+    expect(buildIngestJobOptions(validEventPayload())).toEqual({
+      jobId: validClientEventId
+    });
+  });
+
+  test("ingest CORS is public but auth CORS is not", async () => {
+    const owner = await register("cors-owner@example.com");
+    const created = await createProjectViaApi(owner, "CORS Project");
+
+    const ingestResponse = await app.inject({
+      method: "POST",
+      url: `/api/${created.project.id}/store`,
+      headers: {
+        "x-mini-sentry-key": created.key.publicKey,
+        origin: "https://arbitrary.example"
+      },
+      payload: validEventPayload()
+    });
+    expect(ingestResponse.statusCode).toBe(202);
+    expect(ingestResponse.headers["access-control-allow-origin"]).toBe("*");
+
+    const loginResponse = await app.inject({
+      method: "POST",
+      url: "/api/auth/login",
+      headers: {
+        origin: "https://arbitrary.example"
+      },
+      payload: {
+        email: "cors-owner@example.com",
+        password: "password123"
+      }
+    });
+    expect(loginResponse.statusCode).toBe(200);
+    expect(loginResponse.headers["access-control-allow-origin"]).not.toBe("*");
+    expect(loginResponse.headers["access-control-allow-origin"]).not.toBe(
+      "https://arbitrary.example"
+    );
   });
 });
 
@@ -392,5 +649,123 @@ describe("projects and keys", () => {
 
     expect(first.project.slug).toBe("repeated-name");
     expect(second.project.slug).not.toBe(first.project.slug);
+  });
+});
+
+describe("issue APIs", () => {
+  const issuePayload: EventPayload = {
+    timestamp: currentTimestamp(),
+    level: "error",
+    message: "Issue API failure",
+    exception: {
+      type: "TypeError",
+      value: "Issue API failure",
+      stacktrace: {
+        frames: [
+          {
+            function: "loadDashboard",
+            filename: "dashboard.ts",
+            in_app: true
+          }
+        ]
+      }
+    },
+    tags: {
+      area: "issues"
+    }
+  };
+
+  test("list, detail, events, stats, status update, and ownership isolation", async () => {
+    const owner = await register("issues-owner@example.com");
+    const otherUser = await register("issues-other@example.com");
+    const created = await createProjectViaApi(owner, "Issues Project");
+
+    const first = await processEvent(created.project.id, issuePayload);
+    await processEvent(created.project.id, issuePayload);
+
+    const listResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues`,
+      headers: authHeaders(owner)
+    });
+    expect(listResponse.statusCode).toBe(200);
+    const list = listIssuesResponseSchema.parse(listResponse.json<unknown>());
+    expect(list.issues).toHaveLength(1);
+    expect(list.issues[0]?.id).toBe(first.issueId);
+    expect(list.issues[0]?.timesSeen).toBe(2);
+
+    const isolatedListResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues`,
+      headers: authHeaders(otherUser)
+    });
+    expect(isolatedListResponse.statusCode).toBe(404);
+
+    const detailResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}`,
+      headers: authHeaders(owner)
+    });
+    expect(detailResponse.statusCode).toBe(200);
+    const detail = issueDetailResponseSchema.parse(detailResponse.json<unknown>());
+    expect(detail.issue.latestEvent?.message).toBe("Issue API failure");
+
+    const eventsResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}/events`,
+      headers: authHeaders(owner)
+    });
+    expect(eventsResponse.statusCode).toBe(200);
+    const events = issueEventsResponseSchema.parse(eventsResponse.json<unknown>());
+    expect(events.events).toHaveLength(2);
+    expect(events.events[0]?.tags).toEqual({ area: "issues" });
+
+    const statsResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}/stats?window=24h`,
+      headers: authHeaders(owner)
+    });
+    expect(statsResponse.statusCode).toBe(200);
+    const stats = issueStatsResponseSchema.parse(statsResponse.json<unknown>());
+    expect(stats.buckets).toHaveLength(1);
+    expect(stats.buckets.reduce((sum, bucket) => sum + bucket.count, 0)).toBe(2);
+
+    const excessiveIssuesPageResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues?page=101&limit=100`,
+      headers: authHeaders(owner)
+    });
+    expect(excessiveIssuesPageResponse.statusCode).toBe(400);
+
+    const excessiveEventsPageResponse = await app.inject({
+      method: "GET",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}/events?page=101&limit=100`,
+      headers: authHeaders(owner)
+    });
+    expect(excessiveEventsPageResponse.statusCode).toBe(400);
+
+    const updateResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}`,
+      headers: authHeaders(owner),
+      payload: {
+        status: "resolved"
+      }
+    });
+    expect(updateResponse.statusCode).toBe(200);
+    const updated = updateIssueResponseSchema.parse(
+      updateResponse.json<unknown>()
+    );
+    expect(updated.issue.status).toBe("resolved");
+
+    const isolatedUpdateResponse = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${created.project.id}/issues/${first.issueId}`,
+      headers: authHeaders(otherUser),
+      payload: {
+        status: "ignored"
+      }
+    });
+    expect(isolatedUpdateResponse.statusCode).toBe(404);
   });
 });

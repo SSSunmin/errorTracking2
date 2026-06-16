@@ -1,0 +1,38 @@
+# Mini-Sentry Knowledge Bundle
+
+> **Open Knowledge Format (OKF v0.1) 번들.**
+> 각 `.md` = 개념(concept) 1개, YAML 프론트매터의 `type`이 필수.
+> 사람이 읽고(`cat`/`git`), AI 에이전트가 컨텍스트로 읽으며, 조직 간 교환이 가능합니다.
+
+## 개념 목록 (Concepts)
+
+### 개요
+- [Mini-Sentry 프로젝트 개요](/overview/mini-sentry.md) — 무엇을·왜·아키텍처 흐름·현재 단계
+- [용어집](/glossary/terms.md) — Issue/Event/fingerprint/DSN 등 도메인 용어
+- [로드맵](/roadmap/roadmap.md) — Phase 1 완료 / 이후 단계
+
+### 아키텍처
+- [시스템 아키텍처](/architecture/system.md) — 모노레포·부팅·미들웨어·파이프라인
+- [인증 플로우](/architecture/auth-flow.md) — JWT + 리프레시 회전·재사용 탐지
+
+### 데이터
+- [데이터 모델 (Prisma / PostgreSQL)](/database/data-model.md) — 7개 모델·관계·인덱스·enum
+- [ERD](/database/erd.md) — 엔티티 관계도(Mermaid)
+
+### API
+- [인증 API](/api/auth-api.md) — register / login / refresh / logout / me
+- [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD
+- [에러 응답 규약](/reference/error-model.md) — 공통 에러 포맷·코드
+
+### 설정 / 운영
+- [환경설정 (env)](/config/environment.md) — DB·JWT·포트·CORS·DSN 변수
+- [운영 런북](/ops/runbook.md) — 셋업·인프라·검증 명령
+
+### 결정
+- [설계 결정 기록 (ADR-lite)](/decisions/decisions.md) — 주요 선택과 이유
+
+## 번들 규칙 (OKF)
+- **예약 파일**: `index.md`(이 파일, 목차), `log.md`(변경 이력). 그 외 모든 `.md`는 개념.
+- **필수 프론트매터**: `type` (비어있지 않을 것). 권장: `title` `description` `resource` `tags` `timestamp`.
+- **링크**: 번들 루트 기준 절대경로(`/...`)를 사용 — 파일이 옮겨가도 안정적.
+- **소비 측 관용**: 누락 필드·모르는 `type`·깨진 링크는 너그럽게 무시.

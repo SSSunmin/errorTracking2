@@ -12,4 +12,15 @@ declare module "fastify" {
   interface FastifyInstance {
     requireAuth: preHandlerAsyncHookHandler;
   }
+
+  interface FastifyContextConfig {
+    cors?:
+      | false
+      | {
+          origin?: boolean | string;
+          methods?: string[];
+          allowedHeaders?: string[];
+          credentials?: boolean;
+        };
+  }
 }

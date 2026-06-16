@@ -12,7 +12,9 @@ import { ZodError } from "zod/v4";
 
 import { env } from "./config/env.js";
 import { HttpError } from "./lib/errors.js";
+import { closeIngestQueue } from "./lib/queue.js";
 import { authRoutes } from "./modules/auth/routes.js";
+import { ingestRoutes, type IngestRoutesOptions } from "./modules/ingest/routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 import { authPlugin } from "./plugins/auth.js";
 
@@ -38,9 +40,17 @@ const hasStatusCode = (value: unknown): value is { statusCode: number } =>
   "statusCode" in value &&
   typeof value.statusCode === "number";
 
-export const buildApp = (): FastifyInstance => {
+export interface BuildAppOptions {
+  ingest?: IngestRoutesOptions;
+}
+
+export const buildApp = (options: BuildAppOptions = {}): FastifyInstance => {
   const app = fastify({
     logger
+  });
+
+  app.addHook("onClose", async () => {
+    await closeIngestQueue();
   });
 
   app.setValidatorCompiler(validatorCompiler);
@@ -124,6 +134,7 @@ export const buildApp = (): FastifyInstance => {
     global: false
   });
   void app.register(authPlugin);
+  void app.register(ingestRoutes, { prefix: "/api", ...options.ingest });
   void app.register(authRoutes, { prefix: "/api/auth" });
   void app.register(projectRoutes, { prefix: "/api/projects" });
 

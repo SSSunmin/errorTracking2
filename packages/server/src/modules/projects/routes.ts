@@ -2,6 +2,7 @@ import type { FastifyRequest } from "fastify";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 
 import { unauthorized } from "../../lib/errors.js";
+import { issueRoutes } from "../issues/routes.js";
 import {
   createProject,
   createProjectKey,
@@ -182,6 +183,8 @@ export const projectRoutes: FastifyPluginCallbackZod = (app, _options, done) => 
         request.body
       )
   );
+
+  void app.register(issueRoutes);
 
   done();
 };

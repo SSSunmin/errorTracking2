@@ -12,10 +12,18 @@
 
 ## 쓸 수 있는 도구
 
-**슬래시 커맨드**: `/plan` · `/review` · `/verify`
-**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `debugger` · `architect`
+**슬래시 커맨드**: `/plan` · `/review` · `/verify` · `/okf`
+**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `debugger` · `architect` · `knowledge-curator`
+
+## 지식 문서(OKF)
+
+- 프로젝트 지식은 `knowledge/` 폴더에 **OKF(Open Knowledge Format) 번들**로 관리한다(개념별 `.md` + 프론트매터 `type` 필수, 절대경로 링크).
+- DB 스키마·API·아키텍처에 **의미 있는 변경**이 생기면 `/okf`(또는 `knowledge-curator` 위임)로 해당 개념 문서를 갱신한다. 추측 금지, 코드 근거로만.
+- 문서 갱신 시 `knowledge/index.md`(목차)와 `knowledge/log.md`(이력)도 함께 최신화.
 
 ## 프로젝트 메모
 
-<!-- 이 프로젝트의 실행/테스트 명령, 구조, 주의점을 짧게 적으세요.
-     예: 실행 = ... / 테스트 = python -m unittest -v / 주의 = ... -->
+- 프로젝트: **Mini-Sentry** — 브라우저 JS 에러 모니터링 플랫폼(Sentry류), 현재 Phase 1.
+- 스택: Node20+/TS, Fastify+Prisma+PostgreSQL, Redis, Zod, Vitest. 모노레포(`packages/server|sdk|dashboard`, `examples/demo-app`).
+- 실행: `npm install` → `npm run infra:up`(PG+Redis) / 검증: `npm run typecheck` · `npm test` · `npm run lint`.
+- 지식 베이스: `knowledge/` (OKF). 개요/DB/API 문서 존재.
