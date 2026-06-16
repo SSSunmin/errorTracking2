@@ -104,9 +104,15 @@ export const ingestRoutes: FastifyPluginCallbackZod<IngestRoutesOptions> = (
         request.log.warn({ err: error }, "failed to update project key usage");
       });
 
+      // Node types `user-agent` as a single `string | undefined` (not an array),
+      // so a plain string check is both correct and exhaustive here.
+      const userAgent = request.headers["user-agent"];
       const id = await enqueue({
         projectId: request.params.projectId,
-        payload: request.body
+        payload: request.body,
+        ...(typeof userAgent === "string" && userAgent.length > 0
+          ? { userAgent }
+          : {})
       });
 
       return reply.status(202).send({ id });

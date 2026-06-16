@@ -1,6 +1,7 @@
 import { IssueLevel, Prisma } from "@prisma/client";
 
 import { prisma } from "../../lib/prisma.js";
+import { mergeEventContexts, truncateUserAgent } from "./enrich.js";
 import { buildCulprit, buildFingerprint, buildTitle } from "./fingerprint.js";
 import type { EventPayload, IssueLevelInput } from "./schemas.js";
 
@@ -9,6 +10,11 @@ export interface ProcessEventResult {
   eventId: string;
   isNew: boolean;
   regressed: boolean;
+}
+
+/** Server-captured metadata that isn't part of the SDK payload. */
+export interface EventMeta {
+  userAgent?: string;
 }
 
 const severityRank: Record<IssueLevelInput, number> = {
@@ -37,13 +43,17 @@ const isKnownPrismaError = (
 
 const processEventOnce = async (
   projectId: string,
-  payload: EventPayload
+  payload: EventPayload,
+  meta: EventMeta
 ): Promise<ProcessEventResult> => {
   const now = new Date();
   const fingerprint = buildFingerprint(payload);
   const title = buildTitle(payload);
   const culprit = buildCulprit(payload);
   const eventTimestamp = new Date(payload.timestamp);
+  // Enrich with browser/os/device parsed from the request User-Agent; the SDK's
+  // own contexts (if any) take precedence over the server-derived ones.
+  const contexts = mergeEventContexts(payload.contexts, meta.userAgent);
 
   return prisma.$transaction(async (tx) => {
     const existingIssue = await tx.issue.findUnique({
@@ -111,8 +121,9 @@ const processEventOnce = async (
         ...(payload.user !== undefined
           ? { userContext: toJson(payload.user) }
           : {}),
-        ...(payload.contexts !== undefined
-          ? { contexts: toJson(payload.contexts) }
+        ...(contexts !== undefined ? { contexts: toJson(contexts) } : {}),
+        ...(meta.userAgent !== undefined
+          ? { userAgent: truncateUserAgent(meta.userAgent) }
           : {}),
         level: toPrismaLevel(payload.level),
         ...(payload.environment !== undefined
@@ -157,13 +168,14 @@ const isIssueFingerprintConflict = (error: unknown): boolean => {
 
 export const processEvent = async (
   projectId: string,
-  payload: EventPayload
+  payload: EventPayload,
+  meta: EventMeta = {}
 ): Promise<ProcessEventResult> => {
   try {
-    return await processEventOnce(projectId, payload);
+    return await processEventOnce(projectId, payload, meta);
   } catch (error) {
     if (isIssueFingerprintConflict(error)) {
-      return await processEventOnce(projectId, payload);
+      return await processEventOnce(projectId, payload, meta);
     }
 
     throw error;

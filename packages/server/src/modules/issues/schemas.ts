@@ -74,7 +74,8 @@ export const eventDetailSchema = eventSummarySchema.extend({
   contexts: z.unknown().nullable(),
   sdkName: z.string().nullable(),
   sdkVersion: z.string().nullable(),
-  requestUrl: z.string().nullable()
+  requestUrl: z.string().nullable(),
+  userAgent: z.string().nullable()
 });
 
 export const listIssuesResponseSchema = z.object({

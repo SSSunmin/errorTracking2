@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { useState, type ReactNode } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, type IssueStatus } from "../api";
@@ -38,16 +38,52 @@ const asRecord = (value: unknown): Record<string, unknown> =>
 const renderValue = (value: unknown): string =>
   typeof value === "string" ? value : (JSON.stringify(value) ?? "");
 
+const str = (value: unknown): string => (typeof value === "string" ? value : "");
+
+const joinParts = (...parts: string[]): string =>
+  parts.filter((part) => part !== "").join(" ");
+
+/** Flatten event.contexts (browser/os/device) + raw User-Agent into a simple
+ *  label→value record for display. Empty when nothing was captured. */
+const buildEnvironment = (
+  contexts: unknown,
+  userAgent: string | null
+): Record<string, unknown> => {
+  const ctx = asRecord(contexts);
+  const browser = asRecord(ctx.browser);
+  const os = asRecord(ctx.os);
+  const device = asRecord(ctx.device);
+  const deviceType = str(device.type);
+
+  const pairs: [string, string][] = [
+    ["브라우저", joinParts(str(browser.name), str(browser.version))],
+    ["OS", joinParts(str(os.name), str(os.version))],
+    [
+      "디바이스",
+      joinParts(str(device.vendor), str(device.model), deviceType ? `(${deviceType})` : "")
+    ],
+    ["User-Agent", userAgent ?? ""]
+  ];
+
+  const env: Record<string, unknown> = {};
+  for (const [label, value] of pairs) {
+    if (value !== "") {
+      env[label] = value;
+    }
+  }
+  return env;
+};
+
 const KeyValues = ({ data }: { data: Record<string, unknown> }): ReactNode => {
   const entries = Object.entries(data);
   if (entries.length === 0) return null;
   return (
     <dl className="kv">
       {entries.map(([key, value]) => (
-        <div key={key}>
+        <Fragment key={key}>
           <dt>{key}</dt>
           <dd>{renderValue(value)}</dd>
-        </div>
+        </Fragment>
       ))}
     </dl>
   );
@@ -87,6 +123,7 @@ export const IssueDetailPage = (): ReactNode => {
   const latest = events.data?.events[0];
   const frames = getFrames(latest?.stacktrace);
   const breadcrumbs = asArray(latest?.breadcrumbs);
+  const environment = buildEnvironment(latest?.contexts, latest?.userAgent ?? null);
 
   return (
     <div className="page">
@@ -207,6 +244,12 @@ export const IssueDetailPage = (): ReactNode => {
           )}
           {latest.message && <p>{latest.message}</p>}
           {latest.requestUrl && <p className="muted small">{latest.requestUrl}</p>}
+          {Object.keys(environment).length > 0 && (
+            <>
+              <h4>환경</h4>
+              <KeyValues data={environment} />
+            </>
+          )}
           {Object.keys(asRecord(latest.tags)).length > 0 && (
             <>
               <h4>태그</h4>

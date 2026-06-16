@@ -75,6 +75,7 @@ export interface EventDetail extends EventSummary {
   sdkName: string | null;
   sdkVersion: string | null;
   requestUrl: string | null;
+  userAgent: string | null;
 }
 
 export interface IssueDetail extends IssueListItem {

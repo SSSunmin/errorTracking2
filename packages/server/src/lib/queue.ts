@@ -9,6 +9,8 @@ export const ingestQueueName = "ingest-events";
 export interface IngestEventJobData {
   projectId: string;
   payload: EventPayload;
+  /** Raw User-Agent of the ingest request, captured server-side for enrichment. */
+  userAgent?: string;
 }
 
 export const createRedisConnection = (forWorker = false): ConnectionOptions =>

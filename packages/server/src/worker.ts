@@ -10,7 +10,9 @@ const worker = new Worker<IngestEventJobData>(
   async (job) => {
     // Future hardening: committed-then-redelivered jobs need durable idempotency
     // beyond BullMQ jobId dedupe to provide strict exactly-once processing.
-    const result = await processEvent(job.data.projectId, job.data.payload);
+    const result = await processEvent(job.data.projectId, job.data.payload, {
+      ...(job.data.userAgent !== undefined ? { userAgent: job.data.userAgent } : {})
+    });
     await processAlertsForEvent(job.data.projectId, result);
   },
   {

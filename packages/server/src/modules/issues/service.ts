@@ -41,6 +41,7 @@ interface EventDetailDto extends EventSummaryDto {
   sdkName: string | null;
   sdkVersion: string | null;
   requestUrl: string | null;
+  userAgent: string | null;
 }
 
 const toIssueListItem = (issue: Issue): IssueListItemDto => ({
@@ -75,7 +76,8 @@ const toEventDetail = (event: Event): EventDetailDto => ({
   contexts: event.contexts,
   sdkName: event.sdkName,
   sdkVersion: event.sdkVersion,
-  requestUrl: event.requestUrl
+  requestUrl: event.requestUrl,
+  userAgent: event.userAgent
 });
 
 const ensureOwnedProject = async (
