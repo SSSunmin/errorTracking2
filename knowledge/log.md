@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-16 (ERD 설명 추가)
+- `database/erd`에 **엔티티 설명**(엔티티별 1줄 의미)과 **관계 설명**(각 선의 의미·카디널리티 풀이) 표 추가. 다이어그램만 있던 것을 보완.
+- 큐레이터 규칙(키트+test2): ERD에 다이어그램만 두지 말고 엔티티·관계 설명을 반드시 붙이도록 명문화.
+
+## 2026-06-16 (디자인 토큰 추가)
+- 대시보드에 BVDS 컬러 시스템 적용(`packages/dashboard/src/tokens.css` 41색×2모드 + `styles.css` 시맨틱 매핑 + 다크 기본).
+- 개념 추가: `design/tokens`(`type: Design Tokens`, **조건부 — 디자인 시스템 없으면 삭제 가능**). `index`에 디자인 섹션 추가.
+
 ## 2026-06-16 (갱신: Phase 4~8 반영)
 - 코드가 Phase 8까지 완성됨에 따라 번들을 전면 최신화.
 - 신규 개념 6종: `architecture/sdk`, `architecture/ingestion-pipeline`, `architecture/dashboard`, `api/ingest-api`, `api/issues-api`, `api/alerts-api`.

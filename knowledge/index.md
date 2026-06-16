@@ -30,6 +30,9 @@
 - [알림 규칙 API](/api/alerts-api.md) — AlertRule CRUD
 - [에러 응답 규약](/reference/error-model.md) — 공통 에러 포맷·코드
 
+### 디자인
+- [디자인 토큰 (BVDS)](/design/tokens.md) — 컬러 시스템·이름 규칙·모드 반전 (조건부: 디자인 시스템 있을 때만)
+
 ### 설정 / 운영
 - [환경설정 (env)](/config/environment.md) — DB·JWT·포트·CORS·DSN 변수
 - [운영 런북](/ops/runbook.md) — 셋업·인프라·검증 명령
