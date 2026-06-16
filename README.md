@@ -52,6 +52,8 @@ npm run -w @mini-sentry/server db:seed     # optional demo data (prints a DSN)
 > (Postgres `5433`, Redis `6380`, API `4100`) to avoid collisions; `.env.example`
 > ships the conventional defaults.
 
+Demo and test account credentials are documented in [docs/ACCOUNTS.md](docs/ACCOUNTS.md).
+
 ## Run
 
 ```sh

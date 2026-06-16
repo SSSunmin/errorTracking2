@@ -1,7 +1,7 @@
 ---
 type: Database Schema
 title: 데이터 모델 (Prisma / PostgreSQL)
-description: Mini-Sentry의 7개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
+description: Mini-Sentry의 8개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
 resource: packages/server/prisma/schema.prisma
 tags: [database, prisma, postgresql, schema]
 timestamp: 2026-06-16
@@ -43,11 +43,17 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 `id` · `userId` → User(Cascade) · `tokenHash`(unique) · `expiresAt` · `revokedAt?` · `replacedByTokenHash?` · `createdAt`
 인덱스: `@@index([userId])`
 
+### Notification — 알림 전송 기록(디듀프 + 감사)
+`id` · `alertRuleId` → AlertRule(Cascade) · `issueId` → Issue(Cascade) · `channel`(AlertChannel) · `status`(NotificationStatus) · `error?` · `sentAt`(기본 now)
+인덱스: `@@index([alertRuleId, issueId])`
+> 워커가 알림 발송 전 advisory lock 아래 `pending` 행을 선점(claim)해 동시성 중복 발송을 막고, 발송 결과를 `sent`/`failed`로 갱신한다. [알림 규칙 API](/api/alerts-api.md) 참고.
+
 ## Enum
 - `IssueLevel`: debug · info · warning · error · fatal
 - `IssueStatus`: unresolved · resolved · ignored
 - `AlertChannel`: email · slack
 - `AlertCondition`: new_issue · regression · event_threshold
+- `NotificationStatus`: pending · sent · failed
 
 ## 관련 개념
 - [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md)

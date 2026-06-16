@@ -18,6 +18,12 @@ timestamp: 2026-06-16
 - **IssueLevel**: debug·info·warning·error·fatal. **IssueStatus**: unresolved·resolved·ignored.
 - **AlertRule(알림 규칙)**: 조건(`new_issue`/`regression`/`event_threshold`) 충족 시 채널(email/slack)로 알림. `threshold`·`windowMinutes`로 임계 설정.
 - **액세스 토큰 / 리프레시 토큰**: 자세히는 [인증 플로우](/architecture/auth-flow.md). 리프레시 **회전(rotation)** = 사용 시 새 토큰 발급+기존 폐기, **재사용 탐지** = 폐기된 토큰 재사용 시 전체 폐기.
+- **Ingest(인제스트)**: SDK가 이벤트를 보내는 공개 엔드포인트 `POST /api/:projectId/store`. DSN 공개키로 인증. [인제스트 API](/api/ingest-api.md).
+- **Queue / Worker(큐 / 워커)**: 인제스트가 이벤트를 BullMQ(Redis) 큐에 적재하고, 별도 워커(`worker.ts`)가 소비해 그룹핑·저장·알림 처리.
+- **Breadcrumb(브레드크럼)**: 에러 직전의 행적(콘솔·클릭·네비게이션). SDK가 링버퍼로 모아 이벤트에 첨부.
+- **Regression(회귀)**: `resolved` 상태의 이슈에 새 이벤트가 도착해 다시 `unresolved`로 열리는 것. `ignored`는 회귀로 보지 않음.
+- **event_threshold**: 지정 윈도(`windowMinutes`) 안에 이벤트 수가 `threshold` 이상이면 발화하는 알림 조건.
+- **Notification(알림 기록)**: 알림 발송의 디듀프·감사 행. 상태 `pending`(선점)→`sent`/`failed`.
 
 ## 관련 개념
-- [데이터 모델](/database/data-model.md) · [ERD](/database/erd.md) · [프로젝트 개요](/overview/mini-sentry.md)
+- [데이터 모델](/database/data-model.md) · [ERD](/database/erd.md) · [프로젝트 개요](/overview/mini-sentry.md) · [인제스트 파이프라인](/architecture/ingestion-pipeline.md)

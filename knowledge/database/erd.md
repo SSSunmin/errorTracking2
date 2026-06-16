@@ -20,6 +20,8 @@ erDiagram
     Project ||--o{ Event : has
     Project ||--o{ AlertRule : has
     Issue ||--o{ Event : groups
+    AlertRule ||--o{ Notification : sends
+    Issue ||--o{ Notification : triggers
 
     User {
         string id PK
@@ -104,6 +106,15 @@ erDiagram
         datetime revokedAt "nullable"
         string replacedByTokenHash "nullable"
         datetime createdAt
+    }
+    Notification {
+        string id PK
+        string alertRuleId FK
+        string issueId FK
+        AlertChannel channel
+        NotificationStatus status
+        string error "nullable"
+        datetime sentAt
     }
 ```
 

@@ -12,16 +12,22 @@
 - [로드맵](/roadmap/roadmap.md) — Phase 1 완료 / 이후 단계
 
 ### 아키텍처
-- [시스템 아키텍처](/architecture/system.md) — 모노레포·부팅·미들웨어·파이프라인
+- [시스템 아키텍처](/architecture/system.md) — 모노레포·부팅·미들웨어·전체 파이프라인
 - [인증 플로우](/architecture/auth-flow.md) — JWT + 리프레시 회전·재사용 탐지
+- [브라우저 SDK](/architecture/sdk.md) — 에러 캡처·DSN·전송 방식
+- [인제스트 파이프라인](/architecture/ingestion-pipeline.md) — Ingest API → BullMQ → Worker → PostgreSQL
+- [대시보드](/architecture/dashboard.md) — React 대시보드 구조·라우트·상태 관리
 
 ### 데이터
-- [데이터 모델 (Prisma / PostgreSQL)](/database/data-model.md) — 7개 모델·관계·인덱스·enum
+- [데이터 모델 (Prisma / PostgreSQL)](/database/data-model.md) — 8개 모델·관계·인덱스·enum
 - [ERD](/database/erd.md) — 엔티티 관계도(Mermaid)
 
 ### API
 - [인증 API](/api/auth-api.md) — register / login / refresh / logout / me
 - [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD
+- [인제스트 API](/api/ingest-api.md) — POST /:projectId/store 이벤트 수집
+- [이슈 API](/api/issues-api.md) — 이슈 목록·상세·상태 변경
+- [알림 규칙 API](/api/alerts-api.md) — AlertRule CRUD
 - [에러 응답 규약](/reference/error-model.md) — 공통 에러 포맷·코드
 
 ### 설정 / 운영
