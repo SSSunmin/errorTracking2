@@ -32,6 +32,7 @@ Worker (packages/server/src/worker.ts)
 - 라우트: `POST /api/:projectId/store`
 - 공개키를 `x-mini-sentry-key` 헤더 또는 `?key=` 쿼리파라미터에서 추출
 - `validateProjectKey`: `ProjectKey.publicKey`로 조회 → `projectId` 매칭 + `isActive` 확인
+- **요청 `User-Agent` 헤더를 캡처**해 잡 데이터(`IngestEventJobData.userAgent`)에 함께 실음 — 브라우저가 자동 첨부하는 신뢰 가능한 출처(서버 측 enrichment용, SDK 변경 불필요)
 - 검증 성공 → `markProjectKeyUsed`(비동기, 실패 무시) + `enqueueIngestEvent` → `202 { id }`
 
 ## 2단계: Fingerprint 계산 (`buildFingerprint`)
@@ -57,10 +58,20 @@ Prisma 트랜잭션 내에서:
 3. **기존** → `Issue.update` (`timesSeen++`, `lastSeen=now`, `level=max(기존,신규)`)
    - 기존 status = `resolved` → `regressed=true`, status를 `unresolved`로 복구
    - 기존 status = `ignored` → 그대로 유지 (재알림 없음)
-4. `Event.create` (모든 페이로드 필드 저장)
+4. `Event.create` (모든 페이로드 필드 저장 + 아래 enrichment 결과)
 5. 반환: `{ issueId, eventId, isNew, regressed }`
 
 동시성 충돌(P2002 unique 위반) 시 **1회 재시도**(`processEventOnce` 두 번 호출).
+
+### User-Agent enrichment (`modules/events/enrich.ts`)
+
+`processEvent`는 잡의 `userAgent`(서버가 1단계에서 캡처)를 `ua-parser-js`로 파싱해 **Sentry 스타일 `contexts`**를 만든다:
+
+- `parseUserAgentContexts(ua)` → `{ browser:{name,version}, os:{name,version}, device:{type,model,vendor} }` (추출 불가 시 `undefined`)
+- `mergeEventContexts(payload.contexts, ua)` → **SDK가 보낸 `contexts` 키가 우선**, 비어 있는 자리만 UA에서 채움
+- 원문 UA는 `Event.userAgent`에 1,024자로 잘라 저장
+
+즉 OS·브라우저·디바이스는 **서버에서 파싱**하므로 SDK는 별도 코드가 필요 없다. 대시보드 이슈 상세의 "환경" 블록에서 표시된다.
 
 ## 4단계: 알림 평가 (`processAlertsForEvent`)
 

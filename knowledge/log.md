@@ -2,6 +2,11 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-16 (User-Agent enrichment 추가)
+- 인제스트 시 서버가 요청 `User-Agent`를 캡처해 `ua-parser-js`로 파싱 → `Event.contexts.{browser,os,device}` + `Event.userAgent` 저장. SDK 변경 없음(브라우저가 헤더 자동 첨부).
+- 갱신: `architecture/ingestion-pipeline`(1·3단계 + enrichment 절), `database/data-model`(Event 주석), `api/issues-api`(EventDetail에 `userAgent`).
+- 코드: `modules/events/enrich.ts`(신규) + `process.ts`/`ingest/routes.ts`/`worker.ts`/`lib/queue.ts`/이슈 직렬화, 대시보드 이슈 상세 "환경" 블록.
+
 ## 2026-06-16 (ERD 설명 추가)
 - `database/erd`에 **엔티티 설명**(엔티티별 1줄 의미)과 **관계 설명**(각 선의 의미·카디널리티 풀이) 표 추가. 다이어그램만 있던 것을 보완.
 - 큐레이터 규칙(키트+test2): ERD에 다이어그램만 두지 말고 엔티티·관계 설명을 반드시 붙이도록 명문화.

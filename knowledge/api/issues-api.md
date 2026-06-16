@@ -69,7 +69,9 @@ id, title, culprit(nullable), level, status, timesSeen, firstSeen(ISO), lastSeen
 id, message, exceptionType, exceptionValue, level, environment, release, timestamp(ISO), receivedAt(ISO)
 ```
 
-**EventDetail** = EventSummary + `stacktrace, breadcrumbs, tags, userContext, contexts, sdkName, sdkVersion, requestUrl`
+**EventDetail** = EventSummary + `stacktrace, breadcrumbs, tags, userContext, contexts, sdkName, sdkVersion, requestUrl, userAgent`
+
+> `contexts`에는 서버가 User-Agent에서 파싱한 `browser`/`os`/`device`가 포함되며, `userAgent`는 원문 문자열이다.
 
 ## 관련 개념
 - [인제스트 API](/api/ingest-api.md)
