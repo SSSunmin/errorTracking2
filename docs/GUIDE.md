@@ -124,7 +124,65 @@ DSN 형식:
 }
 ```
 
-> 외부 배포 버전이 아니므로, 별도 프로젝트에서는 빌드 산출물(`packages/sdk/dist`)을 참조하거나 사내 레지스트리에 게시해 사용하세요.
+> 외부 배포 버전이 아니므로, 별도 프로젝트에서는 tarball을 설치하거나 사내 레지스트리에 게시해 사용하세요.
+
+### 4-1-1. tarball로 설치해서 React/번들러 프로젝트에서 import하기
+
+npm 레지스트리에 publish하지 않고도 `npm pack`으로 만든 tarball을 다른 프로젝트에 설치해 ESM import로 사용할 수 있습니다. SDK 패키지는 `prepack`에서 빌드를 실행하므로, pack 명령만으로 최신 `dist`가 포함된 tarball이 생성됩니다.
+
+```bash
+# 명시적으로 빌드만 실행
+npm run -w @mini-sentry/sdk build
+
+# 또는 빌드 후 tarball 생성
+npm pack -w @mini-sentry/sdk
+```
+
+생성된 `mini-sentry-sdk-0.1.0.tgz`를 사용할 프로젝트로 옮긴 뒤 설치합니다.
+
+```bash
+npm i ./mini-sentry-sdk-0.1.0.tgz
+```
+
+ESM/TypeScript 번들러 프로젝트에서는 패키지 import를 그대로 사용합니다.
+
+```ts
+import * as MiniSentry from "@mini-sentry/sdk";
+
+MiniSentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  release: "web@1.0.0",
+  environment: import.meta.env.MODE,
+});
+```
+
+React 렌더링 에러는 `ErrorBoundary`에서 수동으로 캡처할 수 있습니다.
+
+```tsx
+import { Component, type ReactNode } from "react";
+import * as MiniSentry from "@mini-sentry/sdk";
+
+class ErrorBoundary extends Component<
+  { children: ReactNode },
+  { hasError: boolean }
+> {
+  state = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+
+  componentDidCatch(error: Error) {
+    MiniSentry.captureException(error);
+  }
+
+  render() {
+    return this.state.hasError ? <p>문제가 발생했습니다.</p> : this.props.children;
+  }
+}
+```
+
+tarball import 방식은 타입 선언이 함께 설치되어 React/번들러 프로젝트에서 타입 지원을 받을 수 있고, script 태그 방식은 빌드 설정 없이 HTML에 바로 붙이는 드롭인 방식입니다.
 
 ### 4-2. 초기화 (앱 진입점, 가능한 한 빨리)
 

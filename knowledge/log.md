@@ -2,6 +2,11 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-16 (SDK tarball 배포 방식 추가)
+- `@mini-sentry/sdk`를 `npm pack`으로 tarball 배포하는 방법 추가. `private: true`(publish 차단)를 유지한 채 `files: ["dist"]` + `prepack` 훅으로 dist를 tarball에 포함. 외부 프로젝트에서 `npm i ./mini-sentry-sdk-0.1.0.tgz` 후 ESM import + 타입 사용 가능.
+- `.npmignore` 신규(`.gitignore` 폴백으로 dist 누락되는 문제 방지), `tsconfig.build.json` 신규(선언 빌드에서 테스트 파일 제외).
+- 갱신: `architecture/sdk`(빌드 출력표에 tarball 용도 추가, "패키징 및 tarball 배포" 절 신규, 설명·주의점 포함).
+
 ## 2026-06-16 (SDK 스크립트 태그 드롭인 번들 + 서버 정적 서빙)
 - SDK 빌드를 tsup으로 전환. ESM(`dist/index.js`) 외에 IIFE 번들(`dist/mini-sentry.global.js`, `dist/mini-sentry.min.js`, `window.MiniSentry`)을 추가 출력.
 - `loader.ts`/`loader-options.ts` 신규: `<script>` 로드 시 `document.currentScript`를 읽어 `data-dsn` 또는 `data-key`+`data-project`(src origin에서 DSN 자동 조립)로 자동 init. `data-environment`/`data-release`/`data-auto-instrument` 지원.

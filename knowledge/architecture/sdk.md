@@ -1,9 +1,9 @@
 ---
 type: Architecture
 title: 브라우저 SDK
-description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원.'
+description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음).'
 resource: packages/sdk/src/index.ts
-tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader]
+tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack]
 timestamp: 2026-06-16
 ---
 
@@ -15,11 +15,48 @@ tsup으로 세 가지 출력물을 생성한다:
 
 | 파일 | 형식 | 용도 |
 |---|---|---|
-| `dist/index.js` + `dist/index.d.ts` | ESM | npm 패키지 import (기존) |
+| `dist/index.js` + `dist/index.d.ts` | ESM | npm 패키지 import / tarball 설치 |
 | `dist/mini-sentry.global.js` | IIFE, 비압축 | `<script>` 태그 개발용 |
 | `dist/mini-sentry.min.js` | IIFE, minify | `<script>` 태그 프로덕션용 |
 
 IIFE 진입점은 `src/loader.ts`이며, 전역명 `window.MiniSentry`로 노출된다.
+
+## 패키징 및 tarball 배포 (`packages/sdk/package.json`, `.npmignore`, `tsconfig.build.json`)
+
+`<script>` 태그 외에, 번들러를 사용하는 프로젝트는 tarball로 설치해 ESM import + 타입을 그대로 쓸 수 있다.
+
+### 설치 방법
+
+```bash
+# 1. SDK 디렉터리에서 tarball 생성 (prepack 훅이 빌드를 자동 실행)
+cd packages/sdk
+npm pack
+
+# 2. 외부 프로젝트에서 설치
+npm install ./mini-sentry-sdk-0.1.0.tgz
+```
+
+```ts
+// 타입 포함 ESM import
+import * as MiniSentry from '@mini-sentry/sdk';
+MiniSentry.init({ dsn: '...' });
+```
+
+### 패키지 설정 요점
+
+| 항목 | 설정값 | 설명 |
+|---|---|---|
+| `private` | `true` | npm publish 차단. pack은 허용 |
+| `files` | `["dist"]` | tarball에 `dist/` 만 포함 |
+| `prepack` | `npm run build` | pack 전 자동 빌드 실행 |
+| `main` / `types` / `exports` | `dist/` 기준 | 설치 후 진입점 |
+| build 스크립트 | `tsup --config tsup.config.ts && tsc -p tsconfig.build.json --emitDeclarationOnly` | ESM 번들 + 선언 파일 분리 생성 |
+
+### 패키징 주의점
+
+- 루트 `.gitignore`에 `dist/`가 포함되어 있어, `.npmignore` 없이 `npm pack`하면 npm이 `.gitignore`를 폴백으로 사용해 `dist/`가 tarball에서 누락된다. `packages/sdk/.npmignore`를 추가해 이 폴백을 막고, `files` 필드로 `dist/`를 명시적으로 포함시킨다.
+- `packages/sdk/tsconfig.build.json`(신규): 선언 빌드 시 `src/**/*.test.ts`를 제외해 tarball에 테스트용 `.d.ts`가 섞이지 않도록 한다.
+- tarball 내 구조: `package/dist/index.js`, `package/dist/index.d.ts`, IIFE 번들 포함.
 
 ## 스크립트 태그 드롭인 로더 (`packages/sdk/src/loader.ts`)
 
