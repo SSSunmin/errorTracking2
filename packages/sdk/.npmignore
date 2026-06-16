@@ -1,0 +1,7 @@
+src/
+*.test.ts
+tsup.config.ts
+tsconfig*.json
+*.tsbuildinfo
+coverage/
+node_modules/
