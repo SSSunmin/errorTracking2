@@ -8,6 +8,7 @@ export interface ProcessEventResult {
   issueId: string;
   eventId: string;
   isNew: boolean;
+  regressed: boolean;
 }
 
 const severityRank: Record<IssueLevelInput, number> = {
@@ -54,9 +55,13 @@ const processEventOnce = async (
       },
       select: {
         id: true,
-        level: true
+        level: true,
+        status: true
       }
     });
+    // Only a previously *resolved* issue regressing counts as a regression.
+    // An intentionally *ignored* issue stays ignored and must not re-alert.
+    const regressed = existingIssue?.status === "resolved";
 
     const issue = existingIssue
       ? await tx.issue.update({
@@ -66,7 +71,8 @@ const processEventOnce = async (
             lastSeen: now,
             level: toPrismaLevel(
               maxSeverity(existingIssue.level as IssueLevelInput, payload.level)
-            )
+            ),
+            ...(regressed ? { status: "unresolved" as const } : {})
           },
           select: { id: true }
         })
@@ -129,7 +135,8 @@ const processEventOnce = async (
     return {
       issueId: issue.id,
       eventId: event.id,
-      isNew: !existingIssue
+      isNew: !existingIssue,
+      regressed
     };
   });
 };

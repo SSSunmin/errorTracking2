@@ -3,13 +3,15 @@ import { Worker } from "bullmq";
 import { createRedisConnection, ingestQueueName, type IngestEventJobData } from "./lib/queue.js";
 import { prisma } from "./lib/prisma.js";
 import { processEvent } from "./modules/events/process.js";
+import { processAlertsForEvent } from "./notifications/service.js";
 
 const worker = new Worker<IngestEventJobData>(
   ingestQueueName,
   async (job) => {
     // Future hardening: committed-then-redelivered jobs need durable idempotency
     // beyond BullMQ jobId dedupe to provide strict exactly-once processing.
-    await processEvent(job.data.projectId, job.data.payload);
+    const result = await processEvent(job.data.projectId, job.data.payload);
+    await processAlertsForEvent(job.data.projectId, result);
   },
   {
     connection: createRedisConnection(true),

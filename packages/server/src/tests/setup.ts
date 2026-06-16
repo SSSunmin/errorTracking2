@@ -21,6 +21,7 @@ const { prisma } = await import("../lib/prisma.js");
 beforeEach(async () => {
   await prisma.$executeRawUnsafe(`
     TRUNCATE TABLE
+      "Notification",
       "AlertRule",
       "Event",
       "Issue",

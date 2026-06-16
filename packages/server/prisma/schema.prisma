@@ -32,6 +32,12 @@ enum AlertCondition {
   event_threshold
 }
 
+enum NotificationStatus {
+  pending
+  sent
+  failed
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
@@ -74,20 +80,21 @@ model ProjectKey {
 }
 
 model Issue {
-  id          String      @id @default(cuid())
-  projectId   String
-  project     Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
-  fingerprint String
-  title       String
-  culprit     String?
-  level       IssueLevel  @default(error)
-  status      IssueStatus @default(unresolved)
-  timesSeen   Int         @default(0)
-  firstSeen   DateTime
-  lastSeen    DateTime
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
-  events      Event[]
+  id            String         @id @default(cuid())
+  projectId     String
+  project       Project        @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  fingerprint   String
+  title         String
+  culprit       String?
+  level         IssueLevel     @default(error)
+  status        IssueStatus    @default(unresolved)
+  timesSeen     Int            @default(0)
+  firstSeen     DateTime
+  lastSeen      DateTime
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  events        Event[]
+  notifications Notification[]
 
   @@unique([projectId, fingerprint])
   @@index([projectId, status])
@@ -135,8 +142,23 @@ model AlertRule {
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  notifications Notification[]
 
   @@index([projectId])
+}
+
+model Notification {
+  id          String             @id @default(cuid())
+  alertRuleId String
+  alertRule   AlertRule          @relation(fields: [alertRuleId], references: [id], onDelete: Cascade)
+  issueId     String
+  issue       Issue              @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  channel     AlertChannel
+  status      NotificationStatus
+  error       String?
+  sentAt      DateTime           @default(now())
+
+  @@index([alertRuleId, issueId])
 }
 
 model RefreshToken {

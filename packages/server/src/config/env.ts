@@ -28,7 +28,12 @@ const envSchema = z.object({
   DASHBOARD_PORT: z.coerce.number().int().positive().max(65535).default(5173),
   CORS_ORIGIN: z.url().optional(),
   DSN_HOST: z.string().min(1).optional(),
-  DSN_SCHEME: z.enum(["http", "https"]).optional()
+  DSN_SCHEME: z.enum(["http", "https"]).optional(),
+  SMTP_HOST: z.string().min(1).optional(),
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).optional(),
+  SMTP_USER: z.string().optional(),
+  SMTP_PASSWORD: z.string().optional(),
+  SMTP_FROM: z.email().default("no-reply@mini-sentry.local")
 });
 
 const parsedEnv = envSchema.parse({
