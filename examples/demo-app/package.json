@@ -3,11 +3,16 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
-    "dev": "node --watch src/index.ts",
+    "dev": "vite --port 5173",
+    "build": "vite build",
+    "preview": "vite preview --port 4173",
     "typecheck": "tsc -b"
+  },
+  "dependencies": {
+    "@mini-sentry/sdk": "0.1.0"
+  },
+  "devDependencies": {
+    "vite": "^6.0.0"
   }
 }
