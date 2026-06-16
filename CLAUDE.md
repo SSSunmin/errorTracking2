@@ -12,8 +12,8 @@
 
 ## 쓸 수 있는 도구
 
-**슬래시 커맨드**: `/plan` · `/review` · `/verify` · `/okf`
-**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `debugger` · `architect` · `knowledge-curator`
+**슬래시 커맨드**: `/plan` · `/review` · `/verify` · `/okf` · `/ultraqa`
+**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `debugger` · `architect` · `knowledge-curator` · `qa-tester`
 
 ## 지식 문서(OKF)
 
