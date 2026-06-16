@@ -1,0 +1,282 @@
+export interface User {
+  id: string;
+  email: string;
+  name: string | null;
+  createdAt: string;
+}
+
+export interface AuthResponse {
+  accessToken: string;
+  user: User;
+}
+
+export interface Project {
+  id: string;
+  name: string;
+  slug: string;
+  platform: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ProjectListItem extends Project {
+  keyCount: number;
+}
+
+export interface ProjectKey {
+  id: string;
+  projectId: string;
+  publicKey: string;
+  label: string | null;
+  isActive: boolean;
+  lastUsedAt: string | null;
+  createdAt: string;
+  dsn: string;
+}
+
+export interface CreateProjectResponse {
+  project: Project;
+  key: ProjectKey;
+  dsn: string;
+}
+
+export type IssueLevel = "debug" | "info" | "warning" | "error" | "fatal";
+export type IssueStatus = "unresolved" | "resolved" | "ignored";
+
+export interface IssueListItem {
+  id: string;
+  title: string;
+  culprit: string | null;
+  level: IssueLevel;
+  status: IssueStatus;
+  timesSeen: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+export interface EventSummary {
+  id: string;
+  message: string | null;
+  exceptionType: string | null;
+  exceptionValue: string | null;
+  level: IssueLevel;
+  environment: string | null;
+  release: string | null;
+  timestamp: string;
+  receivedAt: string;
+}
+
+export interface EventDetail extends EventSummary {
+  stacktrace: unknown;
+  breadcrumbs: unknown;
+  tags: unknown;
+  userContext: unknown;
+  contexts: unknown;
+  sdkName: string | null;
+  sdkVersion: string | null;
+  requestUrl: string | null;
+}
+
+export interface IssueDetail extends IssueListItem {
+  latestEvent: EventSummary | null;
+}
+
+export interface StatBucket {
+  bucket: string;
+  count: number;
+}
+
+export type AlertChannel = "email" | "slack";
+export type AlertCondition = "new_issue" | "regression" | "event_threshold";
+
+export interface AlertRule {
+  id: string;
+  projectId: string;
+  name: string;
+  channel: AlertChannel;
+  target: string;
+  condition: AlertCondition;
+  threshold: number | null;
+  windowMinutes: number | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export class ApiError extends Error {
+  public constructor(
+    public readonly status: number,
+    public readonly code: string,
+    message: string
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
+let accessToken: string | null = null;
+export const setAccessToken = (token: string | null): void => {
+  accessToken = token;
+};
+
+interface RequestOptions {
+  method?: string;
+  body?: unknown;
+  retry?: boolean;
+}
+
+interface ErrorBody {
+  error?: { code?: string; message?: string };
+}
+
+const doRefresh = async (): Promise<boolean> => {
+  try {
+    const res = await fetch("/api/auth/refresh", {
+      method: "POST",
+      credentials: "include"
+    });
+    if (!res.ok) {
+      accessToken = null;
+      return false;
+    }
+    const data = (await res.json()) as AuthResponse;
+    accessToken = data.accessToken;
+    return true;
+  } catch {
+    accessToken = null;
+    return false;
+  }
+};
+
+// Coalesce concurrent refreshes so N parallel 401s trigger a single rotation.
+let refreshPromise: Promise<boolean> | null = null;
+const refresh = (): Promise<boolean> => {
+  refreshPromise ??= doRefresh().finally(() => {
+    refreshPromise = null;
+  });
+  return refreshPromise;
+};
+
+const request = async <T>(path: string, options: RequestOptions = {}): Promise<T> => {
+  const res = await fetch(path, {
+    method: options.method ?? "GET",
+    headers: {
+      ...(options.body !== undefined ? { "content-type": "application/json" } : {}),
+      ...(accessToken ? { authorization: `Bearer ${accessToken}` } : {})
+    },
+    ...(options.body !== undefined ? { body: JSON.stringify(options.body) } : {}),
+    credentials: "include"
+  });
+
+  if (
+    res.status === 401 &&
+    options.retry !== false &&
+    !path.startsWith("/api/auth/")
+  ) {
+    if (await refresh()) {
+      return request<T>(path, { ...options, retry: false });
+    }
+  }
+
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ErrorBody | null;
+    throw new ApiError(
+      res.status,
+      body?.error?.code ?? "ERROR",
+      body?.error?.message ?? res.statusText
+    );
+  }
+
+  if (res.status === 204) {
+    return undefined as T;
+  }
+  return (await res.json()) as T;
+};
+
+export const api = {
+  restoreSession: async (): Promise<User | null> => {
+    if (!(await refresh())) {
+      return null;
+    }
+    return request<User>("/api/auth/me", { retry: false });
+  },
+  login: (email: string, password: string): Promise<AuthResponse> =>
+    request("/api/auth/login", { method: "POST", body: { email, password }, retry: false }),
+  register: (email: string, password: string, name?: string): Promise<AuthResponse> =>
+    request("/api/auth/register", {
+      method: "POST",
+      body: name ? { email, password, name } : { email, password },
+      retry: false
+    }),
+  logout: (): Promise<{ ok: boolean }> =>
+    request("/api/auth/logout", { method: "POST", retry: false }),
+
+  listProjects: (): Promise<{ projects: ProjectListItem[] }> =>
+    request("/api/projects"),
+  createProject: (name: string): Promise<CreateProjectResponse> =>
+    request("/api/projects", { method: "POST", body: { name } }),
+  getProject: (id: string): Promise<{ project: Project }> =>
+    request(`/api/projects/${id}`),
+  deleteProject: (id: string): Promise<void> =>
+    request(`/api/projects/${id}`, { method: "DELETE" }),
+  listKeys: (projectId: string): Promise<{ keys: ProjectKey[] }> =>
+    request(`/api/projects/${projectId}/keys`),
+
+  listIssues: (
+    projectId: string,
+    params: {
+      status?: IssueStatus | undefined;
+      query?: string | undefined;
+      sort?: string | undefined;
+    }
+  ): Promise<{ issues: IssueListItem[]; nextCursor: string | null }> => {
+    const search = new URLSearchParams();
+    if (params.status) search.set("status", params.status);
+    if (params.query) search.set("query", params.query);
+    if (params.sort) search.set("sort", params.sort);
+    const qs = search.toString();
+    return request(`/api/projects/${projectId}/issues${qs ? `?${qs}` : ""}`);
+  },
+  getIssue: (
+    projectId: string,
+    issueId: string
+  ): Promise<{ issue: IssueDetail }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}`),
+  listEvents: (
+    projectId: string,
+    issueId: string
+  ): Promise<{ events: EventDetail[]; nextCursor: string | null }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/events`),
+  getStats: (
+    projectId: string,
+    issueId: string,
+    window: "24h" | "7d"
+  ): Promise<{ buckets: StatBucket[] }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/stats?window=${window}`),
+  setIssueStatus: (
+    projectId: string,
+    issueId: string,
+    status: IssueStatus
+  ): Promise<{ issue: IssueListItem }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}`, {
+      method: "PATCH",
+      body: { status }
+    }),
+
+  listAlertRules: (projectId: string): Promise<{ alertRules: AlertRule[] }> =>
+    request(`/api/projects/${projectId}/alert-rules`),
+  createAlertRule: (
+    projectId: string,
+    input: {
+      name: string;
+      channel: AlertChannel;
+      target: string;
+      condition: AlertCondition;
+      threshold?: number;
+      windowMinutes?: number;
+    }
+  ): Promise<{ alertRule: AlertRule }> =>
+    request(`/api/projects/${projectId}/alert-rules`, { method: "POST", body: input }),
+  deleteAlertRule: (projectId: string, ruleId: string): Promise<void> =>
+    request(`/api/projects/${projectId}/alert-rules/${ruleId}`, { method: "DELETE" })
+};
