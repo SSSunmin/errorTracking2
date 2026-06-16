@@ -9,3 +9,7 @@ coverage/
 .DS_Store
 .idea/
 .vscode/
+
+# local dev tooling (cloudflared binary, tunnel logs, scratch payloads)
+.tools/
+*.stackdump

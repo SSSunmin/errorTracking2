@@ -1,7 +1,11 @@
 import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import rateLimit from "@fastify/rate-limit";
+import staticPlugin from "@fastify/static";
 import fastify, { type FastifyInstance } from "fastify";
+import { existsSync } from "node:fs";
+import { basename, dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import {
   hasZodFastifySchemaValidationErrors,
   isResponseSerializationError,
@@ -17,6 +21,13 @@ import { authRoutes } from "./modules/auth/routes.js";
 import { ingestRoutes, type IngestRoutesOptions } from "./modules/ingest/routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
 import { authPlugin } from "./plugins/auth.js";
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const sdkDistDir = resolve(__dirname, "../../sdk/dist");
+const servedSdkFiles = new Set([
+  "mini-sentry.global.js",
+  "mini-sentry.min.js"
+]);
 
 const logger =
   env.NODE_ENV === "development"
@@ -133,6 +144,21 @@ export const buildApp = (options: BuildAppOptions = {}): FastifyInstance => {
   void app.register(rateLimit, {
     global: false
   });
+  if (existsSync(sdkDistDir)) {
+    void app.register(staticPlugin, {
+      root: sdkDistDir,
+      prefix: "/sdk/",
+      cacheControl: false,
+      decorateReply: false,
+      index: false,
+      wildcard: false,
+      setHeaders: (response) => {
+        response.setHeader("cache-control", "no-cache");
+        response.setHeader("content-type", "application/javascript; charset=utf-8");
+      },
+      allowedPath: (pathName) => servedSdkFiles.has(basename(pathName))
+    });
+  }
   void app.register(authPlugin);
   void app.register(ingestRoutes, { prefix: "/api", ...options.ingest });
   void app.register(authRoutes, { prefix: "/api/auth" });

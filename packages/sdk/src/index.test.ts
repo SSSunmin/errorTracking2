@@ -4,6 +4,10 @@ import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { Client } from "./client.js";
 import { parseDsn } from "./dsn.js";
 import { close, init } from "./index.js";
+import {
+  buildDsnFromScriptOrigin,
+  readInitOptionsFromScript
+} from "./loader-options.js";
 import { parseStack } from "./stacktrace.js";
 import type { SentryEvent } from "./types.js";
 
@@ -21,6 +25,53 @@ describe("parseDsn", () => {
     expect(() => parseDsn("not a url")).toThrow();
     expect(() => parseDsn("http://localhost:4100/proj_1")).toThrow();
     expect(() => parseDsn("http://abc123@localhost:4100/")).toThrow();
+  });
+});
+
+describe("script loader options", () => {
+  test("builds a DSN from the script src origin", () => {
+    expect(
+      buildDsnFromScriptOrigin(
+        "https://errors.example.com/sdk/mini-sentry.min.js",
+        "public_123",
+        "project_456"
+      )
+    ).toBe("https://public_123@errors.example.com/project_456");
+  });
+
+  test("prefers data-dsn and reads optional init fields", () => {
+    const script = document.createElement("script");
+    script.src = "https://ignored.example.com/sdk/mini-sentry.min.js";
+    script.dataset.dsn = "https://key@example.com/project";
+    script.dataset.environment = "production";
+    script.dataset.release = "web@1.2.3";
+    script.dataset.autoInstrument = "false";
+
+    expect(readInitOptionsFromScript(script)).toEqual({
+      dsn: "https://key@example.com/project",
+      environment: "production",
+      release: "web@1.2.3",
+      autoInstrument: false
+    });
+  });
+
+  test("uses data-key and data-project with auto instrumentation on by default", () => {
+    const script = document.createElement("script");
+    script.src = "http://localhost:4100/sdk/mini-sentry.min.js";
+    script.dataset.key = "abc123";
+    script.dataset.project = "proj_1";
+
+    expect(readInitOptionsFromScript(script)).toEqual({
+      dsn: "http://abc123@localhost:4100/proj_1",
+      autoInstrument: true
+    });
+  });
+
+  test("returns null when the script has no usable DSN configuration", () => {
+    const script = document.createElement("script");
+    script.src = "https://errors.example.com/sdk/mini-sentry.min.js";
+
+    expect(readInitOptionsFromScript(script)).toBeNull();
   });
 });
 

@@ -6,8 +6,17 @@
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "tsup --config tsup.config.ts && tsc -p tsconfig.json --emitDeclarationOnly",
     "dev": "node --watch src/index.ts",
     "typecheck": "tsc -b"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "devDependencies": {
+    "tsup": "^8.5.1"
   }
 }
