@@ -2,6 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-16 (AlertRule 쿨다운 사용자 설정 기능 추가)
+- `AlertRule`에 `cooldownMinutes Int?` 컬럼 추가(마이그레이션 `20260616045858_alert_rule_cooldown`). regression 조건 전용 dedup 윈도를 규칙별로 설정 가능, 미지정 시 서버 기본값 60분.
+- 갱신: `database/data-model`(AlertRule에 `cooldownMinutes` 설명·정규화 규칙 추가), `database/erd`(AlertRule 엔티티에 `cooldownMinutes` 필드 추가), `api/alerts-api`(입력·응답 스키마에 `cooldownMinutes` 추가, 동작 규칙 명시).
+
 ## 2026-06-16 (User-Agent enrichment 추가)
 - 인제스트 시 서버가 요청 `User-Agent`를 캡처해 `ua-parser-js`로 파싱 → `Event.contexts.{browser,os,device}` + `Event.userAgent` 저장. SDK 변경 없음(브라우저가 헤더 자동 첨부).
 - 갱신: `architecture/ingestion-pipeline`(1·3단계 + enrichment 절), `database/data-model`(Event 주석), `api/issues-api`(EventDetail에 `userAgent`).

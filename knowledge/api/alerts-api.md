@@ -58,14 +58,17 @@ timestamp: 2026-06-16
 | `condition` | new_issue\|regression\|event_threshold | - | 트리거 조건 |
 | `threshold` | int | 1–1000 | event_threshold 시 필수 |
 | `windowMinutes` | int | 1–1440 | event_threshold 시 필수 |
+| `cooldownMinutes` | int | 1–1440, optional | regression 조건에서만 유효. 미지정 시 서버 기본값 **60분** 적용. 다른 조건에서 지정해도 서버가 null로 저장. |
 | `isActive` | boolean | 기본 true | 활성화 여부 |
+
+> **`cooldownMinutes` 동작 규칙**: `condition=regression`인 규칙이 발화될 때, 같은 `(alertRule, issue)` 쌍으로 이미 `cooldownMinutes`분 이내에 발송된 Notification이 있으면 알림을 억제(dedup)한다. 값을 생략하면 `DEFAULT_REGRESSION_COOLDOWN_MINUTES = 60`이 쓰인다. `new_issue` · `event_threshold` 조건에서는 이 필드가 null로 강제되며 무시된다.
 
 ## AlertRule 응답 객체
 
 ```
 id, projectId, name, channel, target, condition,
-threshold(nullable), windowMinutes(nullable), isActive,
-createdAt(ISO), updatedAt(ISO)
+threshold(nullable), windowMinutes(nullable), cooldownMinutes(nullable),
+isActive, createdAt(ISO), updatedAt(ISO)
 ```
 
 ## 관련 개념

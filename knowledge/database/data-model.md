@@ -38,8 +38,10 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 > `userAgent`(원문)와 `contexts.{browser,os,device}`는 인제스트 시 요청 User-Agent를 서버가 `ua-parser-js`로 파싱해 채운다([인제스트 파이프라인](/architecture/ingestion-pipeline.md)의 enrichment). SDK가 `contexts`를 직접 보내면 그 값이 우선한다.
 
 ### AlertRule — 알림 규칙
-`id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `isActive`(기본 true) · `createdAt` · `updatedAt`
+`id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `cooldownMinutes?`(Int?, regression 전용) · `isActive`(기본 true) · `createdAt` · `updatedAt`
 인덱스: `@@index([projectId])`
+
+> `cooldownMinutes`: `condition=regression`일 때만 의미를 가지며, regression 알림의 중복 발송 억제(dedup) 윈도를 분 단위로 지정한다. 미지정 시 서버 기본값 60분 적용. `regression` 이외 조건에서는 서비스 레이어(`normalizeCooldownMinutes`)가 null로 강제 저장한다. 마이그레이션: `20260616045858_alert_rule_cooldown`.
 
 ### RefreshToken — 리프레시 토큰(회전/폐기 추적)
 `id` · `userId` → User(Cascade) · `tokenHash`(unique) · `expiresAt` · `revokedAt?` · `replacedByTokenHash?` · `createdAt`

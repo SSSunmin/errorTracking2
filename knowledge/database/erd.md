@@ -94,6 +94,7 @@ erDiagram
         AlertCondition condition
         int threshold "nullable"
         int windowMinutes "nullable"
+        int cooldownMinutes "nullable, regression 전용"
         boolean isActive "default true"
         datetime createdAt
         datetime updatedAt
