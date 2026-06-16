@@ -112,11 +112,10 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
   width: 100%;
   max-width: 360px;
   margin: 0;
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1.75rem;
-  box-shadow: var(--shadow-md);
 }
 .auth-card h1 { margin-top: 0; }
 .auth-card form { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -127,11 +126,10 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 .tabs button.active { background: var(--accent-soft); border-color: var(--accent); }
 
 .card {
-  background: var(--panel);
+  background: transparent;
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.15rem;
-  box-shadow: var(--shadow-sm);
 }
 .card.success { border-color: var(--ok); }
 .card.row { display: flex; align-items: center; justify-content: space-between; }
