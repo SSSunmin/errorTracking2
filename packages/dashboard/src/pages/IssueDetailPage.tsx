@@ -81,7 +81,7 @@ export const IssueDetailPage = (): ReactNode => {
   });
 
   if (issue.isLoading) return <Spinner />;
-  if (!issue.data) return <p className="error">Issue not found.</p>;
+  if (!issue.data) return <p className="error">이슈를 찾을 수 없습니다.</p>;
 
   const detail = issue.data.issue;
   const latest = events.data?.events[0];
@@ -91,7 +91,7 @@ export const IssueDetailPage = (): ReactNode => {
   return (
     <div className="page">
       <Link className="muted" to={`/projects/${projectId}`}>
-        ← Issues
+        ← 이슈
       </Link>
 
       <div className="page-head">
@@ -105,7 +105,7 @@ export const IssueDetailPage = (): ReactNode => {
                 setStatus.mutate("resolved");
               }}
             >
-              Resolve
+              해결
             </button>
           )}
           {detail.status !== "ignored" && (
@@ -116,7 +116,7 @@ export const IssueDetailPage = (): ReactNode => {
                 setStatus.mutate("ignored");
               }}
             >
-              Ignore
+              무시
             </button>
           )}
           {detail.status !== "unresolved" && (
@@ -127,7 +127,7 @@ export const IssueDetailPage = (): ReactNode => {
                 setStatus.mutate("unresolved");
               }}
             >
-              Unresolve
+              미해결로
             </button>
           )}
         </div>
@@ -136,15 +136,15 @@ export const IssueDetailPage = (): ReactNode => {
       <div className="meta-row">
         <LevelBadge level={detail.level} />
         <StatusBadge status={detail.status} />
-        <span className="muted">{detail.timesSeen} events</span>
-        <span className="muted">first {relativeTime(detail.firstSeen)}</span>
-        <span className="muted">last {relativeTime(detail.lastSeen)}</span>
+        <span className="muted">이벤트 {detail.timesSeen}건</span>
+        <span className="muted">최초 {relativeTime(detail.firstSeen)}</span>
+        <span className="muted">최근 {relativeTime(detail.lastSeen)}</span>
       </div>
       {detail.culprit && <p className="culprit">{detail.culprit}</p>}
 
       <section className="card">
         <div className="card-head">
-          <h3>Event frequency</h3>
+          <h3>이벤트 빈도</h3>
           <div className="tabs small">
             <button
               type="button"
@@ -176,13 +176,13 @@ export const IssueDetailPage = (): ReactNode => {
       )}
       {events.isError && (
         <section className="card">
-          <p className="error">Failed to load events.</p>
+          <p className="error">이벤트를 불러오지 못했습니다.</p>
         </section>
       )}
 
       {frames.length > 0 && (
         <section className="card">
-          <h3>Stack trace</h3>
+          <h3>스택트레이스</h3>
           <ul className="frames">
             {frames.map((frame, index) => (
               <li key={index} className={frame.in_app ? "in-app" : "vendor"}>
@@ -199,7 +199,7 @@ export const IssueDetailPage = (): ReactNode => {
 
       {latest && (
         <section className="card">
-          <h3>Latest event</h3>
+          <h3>최근 이벤트</h3>
           {latest.exceptionType && (
             <p>
               <strong>{latest.exceptionType}</strong>: {latest.exceptionValue}
@@ -209,19 +209,19 @@ export const IssueDetailPage = (): ReactNode => {
           {latest.requestUrl && <p className="muted small">{latest.requestUrl}</p>}
           {Object.keys(asRecord(latest.tags)).length > 0 && (
             <>
-              <h4>Tags</h4>
+              <h4>태그</h4>
               <KeyValues data={asRecord(latest.tags)} />
             </>
           )}
           {Object.keys(asRecord(latest.userContext)).length > 0 && (
             <>
-              <h4>User</h4>
+              <h4>사용자</h4>
               <KeyValues data={asRecord(latest.userContext)} />
             </>
           )}
           {breadcrumbs.length > 0 && (
             <>
-              <h4>Breadcrumbs</h4>
+              <h4>브레드크럼</h4>
               <ul className="crumbs">
                 {breadcrumbs.map((crumb, index) => (
                   <li key={index}>

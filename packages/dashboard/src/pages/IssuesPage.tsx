@@ -4,6 +4,7 @@ import { Link, useParams } from "react-router-dom";
 
 import { api, type IssueStatus } from "../api";
 import { LevelBadge, relativeTime, Spinner, StatusBadge } from "../components";
+import { statusLabels } from "../labels";
 
 export const IssuesPage = (): ReactNode => {
   const { projectId = "" } = useParams();
@@ -29,9 +30,9 @@ export const IssuesPage = (): ReactNode => {
   return (
     <div className="page">
       <div className="page-head">
-        <h2>{project.data?.project.name ?? "Issues"}</h2>
+        <h2>{project.data?.project.name ?? "이슈"}</h2>
         <Link className="ghost" to={`/projects/${projectId}/alerts`}>
-          Alert rules
+          알림 규칙
         </Link>
       </div>
 
@@ -42,10 +43,10 @@ export const IssuesPage = (): ReactNode => {
             setStatus(e.target.value as IssueStatus | "");
           }}
         >
-          <option value="">All statuses</option>
-          <option value="unresolved">Unresolved</option>
-          <option value="resolved">Resolved</option>
-          <option value="ignored">Ignored</option>
+          <option value="">전체 상태</option>
+          <option value="unresolved">{statusLabels.unresolved}</option>
+          <option value="resolved">{statusLabels.resolved}</option>
+          <option value="ignored">{statusLabels.ignored}</option>
         </select>
         <select
           value={sort}
@@ -53,9 +54,9 @@ export const IssuesPage = (): ReactNode => {
             setSort(e.target.value);
           }}
         >
-          <option value="lastSeen">Last seen</option>
-          <option value="firstSeen">First seen</option>
-          <option value="timesSeen">Events</option>
+          <option value="lastSeen">최근 발생순</option>
+          <option value="firstSeen">최초 발생순</option>
+          <option value="timesSeen">이벤트 수</option>
         </select>
         <form
           className="search"
@@ -65,21 +66,21 @@ export const IssuesPage = (): ReactNode => {
           }}
         >
           <input
-            placeholder="Search title…"
+            placeholder="제목 검색…"
             value={text}
             onChange={(e) => {
               setText(e.target.value);
             }}
           />
           <button type="submit" className="ghost">
-            Search
+            검색
           </button>
         </form>
       </div>
 
       {issues.isLoading && <Spinner />}
       {issues.data && issues.data.issues.length === 0 && (
-        <p className="muted">No issues match.</p>
+        <p className="muted">조건에 맞는 이슈가 없습니다.</p>
       )}
 
       <table className="issues">

@@ -4,6 +4,23 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Mini-Sentry</title>
+    <script>
+      // Apply the saved/preferred theme before first paint to avoid a flash.
+      // Must mirror getInitialTheme() in src/theme.tsx.
+      (function () {
+        try {
+          var t = localStorage.getItem("mini-sentry-theme");
+          if (t !== "dark" && t !== "light") {
+            t = window.matchMedia("(prefers-color-scheme: dark)").matches
+              ? "dark"
+              : "light";
+          }
+          document.documentElement.classList.toggle("dark", t === "dark");
+        } catch (e) {
+          /* localStorage/matchMedia unavailable — fall back to light */
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

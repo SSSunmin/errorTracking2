@@ -1,15 +1,31 @@
+@import "./tokens.css";
+
+/* ── 시맨틱 레이어 — BVDS 토큰에 매핑. 테마는 런타임에 결정(html.dark 유무).
+   초기값은 index.html 부트 스크립트가, 토글은 src/theme.tsx가 .dark를 붙였다 뗀다.
+   Neutral은 의미 기반(White=배경, Black=텍스트)이라 모드 전환 시 자동 반전된다.
+
+   표면 위계(양 모드 공통): --bg(바탕) → --panel(카드) → --panel-2(중첩면).
+   라이트는 한 단계씩 어두워지고 다크는 밝아지며 분리된다. --border는 두 면과
+   구분되도록 한 톤 진하게(neutral-lighter), --muted는 가독성 위해 neutral-dark. ── */
 :root {
-  --bg: #0e0e14;
-  --panel: #181822;
-  --panel-2: #20202e;
-  --border: #2a2a3a;
-  --text: #e7e7ee;
-  --muted: #9a9ab0;
-  --accent: #7c6cf0;
-  --accent-soft: #2a2548;
-  --error: #ff6b6b;
-  --ok: #46c98b;
-  --warn: #f3b13b;
+  --bg: var(--neutral-white);
+  --panel: var(--neutral-pale);
+  --panel-2: var(--neutral-lightest);
+  --border: var(--neutral-lighter);
+  --text: var(--neutral-black);
+  --muted: var(--neutral-dark);
+  --accent: var(--primary-main);
+  --accent-soft: var(--primary-pale);
+  --error: var(--negative);
+  --ok: var(--positive);
+  --warn: var(--warning);
+
+  /* 토큰 기반 그림자 — raw alpha 대신 토큰을 섞어 모드 전환에도 자연스럽게.
+     color-mix 미지원 구형 브라우저용 rgba 폴백을 앞줄에 둔다. */
+  --shadow-sm: 0 1px 2px rgba(12, 11, 23, 0.08);
+  --shadow-sm: 0 1px 2px color-mix(in srgb, var(--neutral-black) 8%, transparent);
+  --shadow-md: 0 4px 16px rgba(12, 11, 23, 0.12);
+  --shadow-md: 0 4px 16px color-mix(in srgb, var(--neutral-black) 12%, transparent);
 }
 
 * { box-sizing: border-box; }
@@ -53,7 +69,7 @@ input, select {
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
 }
-input:focus, select:focus { outline: 2px solid var(--accent-soft); }
+input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .topbar {
   display: flex;
@@ -62,22 +78,45 @@ input:focus, select:focus { outline: 2px solid var(--accent-soft); }
   padding: 0.85rem 1.5rem;
   border-bottom: 1px solid var(--border);
   background: var(--panel);
+  box-shadow: var(--shadow-sm);
 }
 .topbar .brand { font-weight: 700; color: var(--text); }
 .spacer { flex: 1; }
+
+.theme-toggle {
+  padding: 0.4rem 0.55rem;
+  line-height: 1;
+  font-size: 15px;
+}
 
 main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 .page { display: flex; flex-direction: column; gap: 1rem; }
 .page-head { display: flex; align-items: center; justify-content: space-between; }
 .page-head h2 { margin: 0; }
 
+.auth-shell {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+.auth-toolbar {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 1;
+}
 .auth-card {
+  width: 100%;
   max-width: 360px;
-  margin: 12vh auto;
+  margin: 0;
   background: var(--panel);
   border: 1px solid var(--border);
   border-radius: 14px;
   padding: 1.75rem;
+  box-shadow: var(--shadow-md);
 }
 .auth-card h1 { margin-top: 0; }
 .auth-card form { display: flex; flex-direction: column; gap: 0.75rem; }
@@ -92,12 +131,15 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 1rem 1.15rem;
+  box-shadow: var(--shadow-sm);
 }
 .card.success { border-color: var(--ok); }
 .card.row { display: flex; align-items: center; justify-content: space-between; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .list { display: flex; flex-direction: column; gap: 0.75rem; }
 
+.create-project { display: flex; flex-direction: column; gap: 0.4rem; }
+.create-project .form-error { margin: 0 0.1rem; }
 .inline-form { display: flex; gap: 0.5rem; }
 .inline-form input { flex: 1; }
 .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; }
@@ -121,13 +163,15 @@ table.issues td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
-.level-error, .level-fatal { background: #3a1d22; color: #ff8a8a; }
-.level-warning { background: #3a2f1a; color: var(--warn); }
-.level-info { background: #1c2c3a; color: #7fb4e6; }
-.level-debug { background: #25253a; color: var(--muted); }
-.status-unresolved { background: var(--accent-soft); color: #b6abff; }
-.status-resolved { background: #163225; color: var(--ok); }
-.status-ignored { background: #2a2a36; color: var(--muted); }
+.level-error, .level-fatal { background: var(--negative-container); color: var(--negative); }
+/* 경고는 노랑 텍스트가 노랑 배경에서 거의 안 보여, 양 모드에서 대비가 확보되는
+   neutral-darkest(라이트=짙은 회색/다크=밝은 회색)로 글자색을 잡는다. */
+.level-warning { background: var(--warning-container); color: var(--neutral-darkest); }
+.level-info { background: var(--primary-pale); color: var(--primary-dark); }
+.level-debug { background: var(--panel-2); color: var(--muted); }
+.status-unresolved { background: var(--accent-soft); color: var(--primary-darker); }
+.status-resolved { background: var(--positive-container); color: var(--positive); }
+.status-ignored { background: var(--panel-2); color: var(--muted); }
 
 .meta-row { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
 .culprit { font-family: ui-monospace, monospace; color: var(--muted); }

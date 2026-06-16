@@ -3,6 +3,7 @@ import { Link, Navigate, Route, Routes } from "react-router-dom";
 
 import { useAuth } from "./auth";
 import { Spinner } from "./components";
+import { ThemeToggle } from "./theme";
 import { AlertsPage } from "./pages/AlertsPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { IssuesPage } from "./pages/IssuesPage";
@@ -19,6 +20,7 @@ const Layout = ({ children }: { children: ReactNode }): ReactNode => {
         </Link>
         <div className="spacer" />
         <span className="muted">{user?.email}</span>
+        <ThemeToggle />
         <button
           type="button"
           className="ghost"
@@ -26,7 +28,7 @@ const Layout = ({ children }: { children: ReactNode }): ReactNode => {
             void logout();
           }}
         >
-          Log out
+          로그아웃
         </button>
       </header>
       <main>{children}</main>

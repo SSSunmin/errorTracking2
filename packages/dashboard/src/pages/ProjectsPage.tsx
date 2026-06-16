@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 
-import { api, type CreateProjectResponse } from "../api";
+import { ApiError, api, type CreateProjectResponse } from "../api";
 import { relativeTime, Spinner } from "../components";
 
 const CopyButton = ({ value }: { value: string }): ReactNode => {
@@ -19,7 +19,7 @@ const CopyButton = ({ value }: { value: string }): ReactNode => {
         }, 1500);
       }}
     >
-      {copied ? "Copied" : "Copy"}
+      {copied ? "복사됨" : "복사"}
     </button>
   );
 };
@@ -43,7 +43,7 @@ const ProjectDsn = ({ projectId }: { projectId: string }): ReactNode => {
   });
   if (keys.isLoading) return <Spinner />;
   const active = keys.data?.keys.find((key) => key.isActive) ?? keys.data?.keys[0];
-  if (!active) return <p className="muted">No keys.</p>;
+  if (!active) return <p className="muted">키가 없습니다.</p>;
   return <DsnBlock dsn={active.dsn} />;
 };
 
@@ -56,52 +56,71 @@ export const ProjectsPage = (): ReactNode => {
   const [name, setName] = useState("");
   const [created, setCreated] = useState<CreateProjectResponse | null>(null);
   const [openDsn, setOpenDsn] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const create = useMutation({
     mutationFn: () => api.createProject(name.trim()),
     onSuccess: (result) => {
       setCreated(result);
       setName("");
+      setError(null);
       void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : "프로젝트 생성에 실패했습니다.");
     }
   });
 
   return (
     <div className="page">
-      <h2>Projects</h2>
+      <h2>프로젝트</h2>
 
+      <div className="create-project">
       <form
         className="inline-form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (name.trim()) {
-            create.mutate();
+          if (!name.trim()) {
+            setError("프로젝트 이름을 입력하세요.");
+            return;
           }
+          setError(null);
+          create.mutate();
         }}
       >
         <input
-          placeholder="New project name"
+          placeholder="새 프로젝트 이름"
+          aria-invalid={error !== null}
           value={name}
           onChange={(event) => {
             setName(event.target.value);
+            if (error) {
+              setError(null);
+            }
           }}
         />
         <button type="submit" className="primary" disabled={create.isPending}>
-          Create project
+          프로젝트 생성
         </button>
       </form>
+      {error && (
+        <p className="error small form-error" role="alert">
+          {error}
+        </p>
+      )}
+      </div>
 
       {created && (
         <div className="card success">
-          <h3>Created “{created.project.name}”</h3>
-          <p className="muted">Point your app at this DSN to start sending events:</p>
+          <h3>“{created.project.name}” 생성됨</h3>
+          <p className="muted">이 DSN을 앱에 설정하면 이벤트 전송이 시작됩니다:</p>
           <DsnBlock dsn={created.dsn} />
         </div>
       )}
 
       {projects.isLoading && <Spinner />}
       {projects.data && projects.data.projects.length === 0 && (
-        <p className="muted">No projects yet. Create one above.</p>
+        <p className="muted">아직 프로젝트가 없습니다. 위에서 만들어 보세요.</p>
       )}
 
       <div className="list">
@@ -113,8 +132,7 @@ export const ProjectsPage = (): ReactNode => {
                   {project.name}
                 </Link>
                 <p className="muted">
-                  {project.platform} · {project.keyCount} key
-                  {project.keyCount === 1 ? "" : "s"} · updated{" "}
+                  {project.platform} · 키 {project.keyCount}개 · 업데이트{" "}
                   {relativeTime(project.updatedAt)}
                 </p>
               </div>
@@ -125,7 +143,7 @@ export const ProjectsPage = (): ReactNode => {
                   setOpenDsn(openDsn === project.id ? null : project.id);
                 }}
               >
-                {openDsn === project.id ? "Hide DSN" : "Show DSN"}
+                {openDsn === project.id ? "DSN 숨기기" : "DSN 보기"}
               </button>
             </div>
             {openDsn === project.id && <ProjectDsn projectId={project.id} />}

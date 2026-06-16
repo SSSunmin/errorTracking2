@@ -1,0 +1,159 @@
+/* BVDS 빅밸류 디자인 시스템 — 컬러 토큰 (Figma 변수 export)
+   출처: D:/project/colorSystem/{Light,Dark} Mode.tokens.json
+   :root=Light, .dark=Dark. 이름: Brand 접두 제거(primary/secondary/tertiary), Validation→positive/warning/negative(+-container). */
+
+:root {
+
+  /* Brand/Primary */
+  --primary-main: #4434e2;
+  --primary-light: #6867fe;
+  --primary-lighter: #8d8dfb;
+  --primary-lightest: #dcdbfd;
+  --primary-pale: #ecebfc;
+  --primary-dark: #3526c7;
+  --primary-darker: #3025a0;
+  --primary-darkest: #11086c;
+
+  /* Brand/Secondary */
+  --secondary-main: #9e5df9;
+  --secondary-light: #af7afa;
+  --secondary-lighter: #c299fb;
+  --secondary-lightest: #e8d8fe;
+  --secondary-pale: #f5effe;
+  --secondary-dark: #864fd4;
+  --secondary-darker: #7042b1;
+  --secondary-darkest: #472a70;
+
+  /* Brand/Tertiary */
+  --tertiary-main: #00e49b;
+  --tertiary-light: #3ceeb5;
+  --tertiary-lighter: #73f4cb;
+  --tertiary-lightest: #d2fbee;
+  --tertiary-pale: #e6fcf5;
+  --tertiary-dark: #00c284;
+  --tertiary-darker: #00a26e;
+  --tertiary-darkest: #006746;
+
+  /* Neutral/White */
+  --neutral-white: #ffffff;
+
+  /* Neutral/Whitegray */
+  --neutral-whitegray: #f7f6f8;
+
+  /* Neutral/Black */
+  --neutral-black: #0c0b17;
+
+  /* Neutral/Medium */
+  --neutral-medium: #9291a5;
+
+  /* Neutral/Light */
+  --neutral-light: #a8a7bb;
+
+  /* Neutral/Lighter */
+  --neutral-lighter: #d4d3dd;
+
+  /* Neutral/Lightest */
+  --neutral-lightest: #e3e2e9;
+
+  /* Neutral/Pale */
+  --neutral-pale: #eeedf1;
+
+  /* Neutral/Dark */
+  --neutral-dark: #646371;
+
+  /* Neutral/Darker */
+  --neutral-darker: #3f3f49;
+
+  /* Neutral/Darkest */
+  --neutral-darkest: #25252f;
+
+  /* Validation/Positive */
+  --positive: #00c284;
+  --positive-container: #e6fcf5;
+
+  /* Validation/Warning */
+  --warning: #f1db15;
+  --warning-container: #fefbdf;
+
+  /* Validation/Negative */
+  --negative: #d14141;
+  --negative-container: #fde6e6;
+}
+
+.dark {
+
+  /* Brand/Primary */
+  --primary-main: #6867fe;
+  --primary-light: #4434e2;
+  --primary-lighter: #3526c7;
+  --primary-lightest: #23198a;
+  --primary-pale: #11086c;
+  --primary-dark: #8d8dfb;
+  --primary-darker: #bab9fb;
+  --primary-darkest: #ecebfc;
+
+  /* Brand/Secondary */
+  --secondary-main: #af7afa;
+  --secondary-light: #9e5df9;
+  --secondary-lighter: #864fd4;
+  --secondary-lightest: #5a358e;
+  --secondary-pale: #472a70;
+  --secondary-dark: #c299fb;
+  --secondary-darker: #d5b9fc;
+  --secondary-darkest: #f5effe;
+
+  /* Brand/Tertiary */
+  --tertiary-main: #3ceeb5;
+  --tertiary-light: #00e49b;
+  --tertiary-lighter: #00c284;
+  --tertiary-lightest: #008258;
+  --tertiary-pale: #006746;
+  --tertiary-dark: #73f4cb;
+  --tertiary-darker: #a5f5dc;
+  --tertiary-darkest: #e6fcf5;
+
+  /* Neutral/White */
+  --neutral-white: #0c0b17;
+
+  /* Neutral/Whitegray */
+  --neutral-whitegray: #0c0b17;
+
+  /* Neutral/Black */
+  --neutral-black: #ffffff;
+
+  /* Neutral/Medium */
+  --neutral-medium: #a8a7bb;
+
+  /* Neutral/Light */
+  --neutral-light: #9291a5;
+
+  /* Neutral/Lighter */
+  --neutral-lighter: #646371;
+
+  /* Neutral/Lightest */
+  --neutral-lightest: #3f3f49;
+
+  /* Neutral/Pale */
+  --neutral-pale: #25252f;
+
+  /* Neutral/Dark */
+  --neutral-dark: #d4d3dd;
+
+  /* Neutral/Darker */
+  --neutral-darker: #e3e2e9;
+
+  /* Neutral/Darkest */
+  --neutral-darkest: #eeedf1;
+
+  /* Validation/Positive */
+  --positive: #73f4cb;
+  --positive-container: #006746;
+
+  /* Validation/Warning */
+  --warning: #fff173;
+  --warning-container: #6b6102;
+
+  /* Validation/Negative */
+  --negative: #f19494;
+  --negative-container: #4a0000;
+}

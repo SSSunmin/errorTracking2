@@ -3,6 +3,7 @@ import { useNavigate } from "react-router-dom";
 
 import { ApiError } from "../api";
 import { useAuth } from "../auth";
+import { ThemeToggle } from "../theme";
 
 export const LoginPage = (): ReactNode => {
   const { login, register } = useAuth();
@@ -26,15 +27,19 @@ export const LoginPage = (): ReactNode => {
       }
       navigate("/");
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : "Something went wrong");
+      setError(err instanceof ApiError ? err.message : "문제가 발생했습니다.");
     } finally {
       setBusy(false);
     }
   };
 
   return (
-    <div className="auth-card">
-      <h1>Mini-Sentry</h1>
+    <div className="auth-shell">
+      <div className="auth-toolbar">
+        <ThemeToggle />
+      </div>
+      <div className="auth-card">
+        <h1>Mini-Sentry</h1>
       <div className="tabs">
         <button
           type="button"
@@ -44,7 +49,7 @@ export const LoginPage = (): ReactNode => {
             setError(null);
           }}
         >
-          Log in
+          로그인
         </button>
         <button
           type="button"
@@ -54,13 +59,13 @@ export const LoginPage = (): ReactNode => {
             setError(null);
           }}
         >
-          Sign up
+          회원가입
         </button>
       </div>
       <form onSubmit={submit}>
         {mode === "register" && (
           <label>
-            Name (optional)
+            이름 (선택)
             <input
               value={name}
               onChange={(e) => {
@@ -70,7 +75,7 @@ export const LoginPage = (): ReactNode => {
           </label>
         )}
         <label>
-          Email
+          이메일
           <input
             type="email"
             required
@@ -81,7 +86,7 @@ export const LoginPage = (): ReactNode => {
           />
         </label>
         <label>
-          Password
+          비밀번호
           <input
             type="password"
             required
@@ -94,9 +99,10 @@ export const LoginPage = (): ReactNode => {
         </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" className="primary" disabled={busy}>
-          {busy ? "…" : mode === "login" ? "Log in" : "Create account"}
+          {busy ? "…" : mode === "login" ? "로그인" : "계정 만들기"}
         </button>
       </form>
+      </div>
     </div>
   );
 };
