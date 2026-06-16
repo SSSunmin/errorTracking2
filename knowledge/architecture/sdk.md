@@ -1,13 +1,68 @@
 ---
 type: Architecture
 title: 브라우저 SDK
-description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계.'
+description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원.'
 resource: packages/sdk/src/index.ts
-tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport]
+tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader]
 timestamp: 2026-06-16
 ---
 
 # 브라우저 SDK (`@mini-sentry/sdk`)
+
+## 빌드 출력 (`packages/sdk/tsup.config.ts`)
+
+tsup으로 세 가지 출력물을 생성한다:
+
+| 파일 | 형식 | 용도 |
+|---|---|---|
+| `dist/index.js` + `dist/index.d.ts` | ESM | npm 패키지 import (기존) |
+| `dist/mini-sentry.global.js` | IIFE, 비압축 | `<script>` 태그 개발용 |
+| `dist/mini-sentry.min.js` | IIFE, minify | `<script>` 태그 프로덕션용 |
+
+IIFE 진입점은 `src/loader.ts`이며, 전역명 `window.MiniSentry`로 노출된다.
+
+## 스크립트 태그 드롭인 로더 (`packages/sdk/src/loader.ts`)
+
+IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
+
+1. `window.MiniSentry`에 공개 API 객체를 할당한다.
+2. `document.currentScript`로 자기 자신의 `<script>` 요소를 읽고 `autoInit()`을 실행한다.
+3. `readInitOptionsFromScript`가 `data-*` 속성을 읽어 `InitOptions`를 구성하면, 내부에서 `init()`을 자동 호출한다.
+
+`window.MiniSentry`에 노출되는 API: `init` / `getClient` / `captureException` / `captureMessage` / `setUser` / `setTag` / `setContext` / `addBreadcrumb` / `close`.
+
+### data-* 속성으로 자동 init (`packages/sdk/src/loader-options.ts`)
+
+`readInitOptionsFromScript`는 스크립트 요소의 `dataset`을 다음 순서로 처리한다:
+
+| 속성 | 설명 |
+|---|---|
+| `data-dsn` | 명시적 DSN. 있으면 그대로 사용 |
+| `data-key` + `data-project` | `data-dsn`이 없을 때 사용. `buildDsnFromScriptOrigin`이 스크립트 자신의 `src` origin에서 DSN을 조립: `https://key@host/project` |
+| `data-environment` | `InitOptions.environment` |
+| `data-release` | `InitOptions.release` |
+| `data-auto-instrument` | `"false"`이면 자동 계측 비활성화. 기본 활성(`true`) |
+
+`data-dsn`도 없고 `data-key`/`data-project`도 모두 없으면 자동 init을 건너뛴다(수동 `MiniSentry.init()` 사용 가능).
+
+**사용 예시 (`data-key` + `data-project` 방식, 서버 자체 서빙):**
+```html
+<script
+  src="https://sentry.example.com/sdk/mini-sentry.min.js"
+  data-key="pub_abc123"
+  data-project="1"
+  data-environment="production"
+></script>
+```
+→ DSN은 `https://pub_abc123@sentry.example.com/1`으로 자동 조립된다.
+
+**사용 예시 (`data-dsn` 명시 방식):**
+```html
+<script
+  src="https://sentry.example.com/sdk/mini-sentry.min.js"
+  data-dsn="https://pub_abc123@sentry.example.com/1"
+></script>
+```
 
 ## 공개 API (`packages/sdk/src/index.ts`)
 

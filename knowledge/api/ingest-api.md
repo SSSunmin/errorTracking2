@@ -72,8 +72,30 @@ IP 기준 **50 req / 10초**. `@fastify/rate-limit` 플러그인, `global: false
 - 완료 잡 보관: 최근 **1,000**건
 - 실패 잡 보관: 최근 **5,000**건
 
+## SDK 번들 정적 서빙 (`packages/server/src/app.ts`)
+
+서버가 `@fastify/static`을 통해 SDK IIFE 번들을 직접 서빙한다. 빌드 결과물 디렉터리(`packages/sdk/dist`)가 존재할 때만 등록되며, 존재하지 않으면 플러그인 등록을 건너뛴다.
+
+| 항목 | 값 |
+|---|---|
+| URL prefix | `/sdk/` |
+| 서빙 루트 | `packages/sdk/dist` (서버 기준 `../../sdk/dist`) |
+| 허용 파일 | `mini-sentry.global.js`, `mini-sentry.min.js` (화이트리스트, 그 외 경로 차단) |
+| `Content-Type` | `application/javascript; charset=utf-8` |
+| `Cache-Control` | `no-cache` |
+| 인증 | 불필요 — 스크립트 태그 로드는 CORS 무관 |
+| 디렉터리 인덱스 | `false` (index.html 없음) |
+| 와일드카드 | `false` (화이트리스트 `allowedPath`로만 제한) |
+
+클라이언트는 아래 URL로 번들을 내려받는다:
+- `GET /sdk/mini-sentry.min.js` — 프로덕션 minified 번들
+- `GET /sdk/mini-sentry.global.js` — 개발용 비압축 번들
+
+스크립트 태그 자동 init 방법은 [브라우저 SDK](/architecture/sdk.md)의 "스크립트 태그 드롭인 로더" 절 참고.
+
 ## 관련 개념
 - [시스템 아키텍처](/architecture/system.md)
+- [브라우저 SDK](/architecture/sdk.md)
 - [이슈 API](/api/issues-api.md)
 - [환경설정](/config/environment.md)
 - [데이터 모델](/database/data-model.md)

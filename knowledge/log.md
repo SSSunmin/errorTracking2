@@ -2,6 +2,12 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-16 (SDK 스크립트 태그 드롭인 번들 + 서버 정적 서빙)
+- SDK 빌드를 tsup으로 전환. ESM(`dist/index.js`) 외에 IIFE 번들(`dist/mini-sentry.global.js`, `dist/mini-sentry.min.js`, `window.MiniSentry`)을 추가 출력.
+- `loader.ts`/`loader-options.ts` 신규: `<script>` 로드 시 `document.currentScript`를 읽어 `data-dsn` 또는 `data-key`+`data-project`(src origin에서 DSN 자동 조립)로 자동 init. `data-environment`/`data-release`/`data-auto-instrument` 지원.
+- 서버가 `@fastify/static`으로 `packages/sdk/dist`를 `/sdk/` 프리픽스에 서빙(화이트리스트 2종, `Content-Type: application/javascript`, `Cache-Control: no-cache`, dist 없으면 스킵).
+- 갱신: `architecture/sdk`(빌드 출력표 + 로더 절 + data-* 속성 상세 + 사용 예시), `api/ingest-api`(SDK 번들 정적 서빙 절 추가), `architecture/ingestion-pipeline`(전체 흐름 다이어그램 최상단에 스크립트 태그 경로 추가).
+
 ## 2026-06-16 (AlertRule 쿨다운 사용자 설정 기능 추가)
 - `AlertRule`에 `cooldownMinutes Int?` 컬럼 추가(마이그레이션 `20260616045858_alert_rule_cooldown`). regression 조건 전용 dedup 윈도를 규칙별로 설정 가능, 미지정 시 서버 기본값 60분.
 - 갱신: `database/data-model`(AlertRule에 `cooldownMinutes` 설명·정규화 규칙 추가), `database/erd`(AlertRule 엔티티에 `cooldownMinutes` 필드 추가), `api/alerts-api`(입력·응답 스키마에 `cooldownMinutes` 추가, 동작 규칙 명시).

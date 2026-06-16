@@ -12,7 +12,10 @@ timestamp: 2026-06-16
 ## 전체 흐름
 
 ```text
-Browser SDK
+Browser (script tag)
+  │ GET /sdk/mini-sentry.min.js  ← 서버가 @fastify/static으로 서빙
+  ▼
+Browser SDK (IIFE 자동 init: data-key/data-project 또는 data-dsn)
   │ POST /api/:projectId/store
   ▼
 Ingest API (packages/server/src/modules/ingest/)

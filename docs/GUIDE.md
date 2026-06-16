@@ -148,7 +148,43 @@ MiniSentry.init({
 
 > DSN 형식이 틀려도 `init`은 **예외를 던지지 않고** `null`을 반환합니다 — SDK 설정 실수가 앱을 멈추지 않습니다.
 
-### 4-3. 수동 캡처
+### 4-3. script 태그로 붙이기
+
+번들러 없이 HTML에 한 줄만 추가해도 자동 초기화와 전역 에러 수집이 동작합니다.
+
+```html
+<script src="https://<host>/sdk/mini-sentry.min.js"
+        data-key="<publicKey>" data-project="<projectId>"></script>
+```
+
+- `data-key`와 `data-project`를 쓰면 SDK가 script 자신의 `src` origin을 보고 DSN을 조립합니다. 예를 들어 `src`가 `https://errors.example.com/sdk/mini-sentry.min.js`이면 `https://<publicKey>@errors.example.com/<projectId>` 형태로 초기화합니다.
+- 터널이나 임시 호스트를 다시 열었을 때는 `src`의 host만 바꾸면 됩니다. `data-key`와 `data-project`는 그대로 둘 수 있습니다.
+- 이미 전체 DSN을 알고 있으면 `data-dsn`을 사용할 수 있습니다. `data-dsn`이 있으면 `data-key`/`data-project`보다 우선합니다.
+- `data-auto-instrument="false"`를 지정하면 `window.onerror`와 `unhandledrejection` 자동 캡처를 끕니다. 지정하지 않으면 기본값은 켜짐입니다.
+- `data-environment`, `data-release`를 함께 넣으면 이후 이벤트에 포함됩니다.
+
+전체 DSN을 직접 넣는 예:
+
+```html
+<script src="https://<host>/sdk/mini-sentry.min.js"
+        data-dsn="https://<publicKey>@<host>/<projectId>"
+        data-environment="production"
+        data-release="web@1.0.0"></script>
+```
+
+자동 초기화 후에는 전역 객체로 수동 캡처도 할 수 있습니다.
+
+```html
+<script>
+  try {
+    riskyOperation();
+  } catch (error) {
+    window.MiniSentry.captureException(error);
+  }
+</script>
+```
+
+### 4-4. 수동 캡처
 
 자동 수집 외에 직접 보낼 수 있습니다.
 
@@ -182,7 +218,7 @@ MiniSentry.setUser(null);
 
 > SDK는 URL의 쿼리/해시를 제외하고 보내며(토큰·PII 유출 방지), 순환참조도 안전하게 직렬화합니다.
 
-### 4-4. React 예시
+### 4-5. React 예시
 
 ```tsx
 // main.tsx — 앱 부팅 전에 init
@@ -209,7 +245,7 @@ class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boole
 }
 ```
 
-### 4-5. 동작 확인 (스모크 테스트)
+### 4-6. 동작 확인 (스모크 테스트)
 
 연동이 됐는지 1줄로 확인:
 
