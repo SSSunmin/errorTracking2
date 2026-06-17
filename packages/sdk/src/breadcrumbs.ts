@@ -38,19 +38,20 @@ const describeTarget = (target: EventTarget | null): string => {
 };
 
 /**
- * Instrument console, clicks and history navigation so the breadcrumb buffer
- * captures the trail leading up to an error. Returns a teardown function.
- * No-ops outside a browser environment.
+ * Instrument clicks and history navigation, and optionally console calls, so
+ * the breadcrumb buffer captures the trail leading up to an error. Returns a
+ * teardown function. No-ops outside a browser environment.
  */
 export const instrumentBreadcrumbs = (
-  add: (breadcrumb: Breadcrumb) => void
+  add: (breadcrumb: Breadcrumb) => void,
+  options?: { captureConsole?: boolean }
 ): (() => void) => {
   const teardowns: (() => void)[] = [];
   // Guard against re-entrancy: an internal console call (or a third-party that
   // also wrapped console) must not recurse back into breadcrumb capture.
   let inConsoleHook = false;
 
-  if (typeof console !== "undefined") {
+  if (options?.captureConsole === true && typeof console !== "undefined") {
     const levels = ["log", "info", "warn", "error"] as const;
     for (const level of levels) {
       const original = console[level] as unknown;

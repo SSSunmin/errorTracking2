@@ -53,6 +53,7 @@ export const readInitOptionsFromScript = (
   return {
     dsn,
     autoInstrument: script.dataset.autoInstrument !== "false",
+    captureConsole: script.dataset.captureConsole === "true",
     ...(environment !== undefined ? { environment } : {}),
     ...(release !== undefined ? { release } : {})
   };

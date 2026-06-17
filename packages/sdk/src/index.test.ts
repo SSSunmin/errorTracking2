@@ -46,12 +46,14 @@ describe("script loader options", () => {
     script.dataset.environment = "production";
     script.dataset.release = "web@1.2.3";
     script.dataset.autoInstrument = "false";
+    script.dataset.captureConsole = "true";
 
     expect(readInitOptionsFromScript(script)).toEqual({
       dsn: "https://key@example.com/project",
       environment: "production",
       release: "web@1.2.3",
-      autoInstrument: false
+      autoInstrument: false,
+      captureConsole: true
     });
   });
 
@@ -63,7 +65,8 @@ describe("script loader options", () => {
 
     expect(readInitOptionsFromScript(script)).toEqual({
       dsn: "http://abc123@localhost:4100/proj_1",
-      autoInstrument: true
+      autoInstrument: true,
+      captureConsole: false
     });
   });
 
@@ -200,6 +203,48 @@ describe("Client", () => {
       true
     );
     client.close();
+  });
+
+  test("console breadcrumbs are not captured by default", () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const client = new Client({ dsn: DSN, autoInstrument: true });
+
+    console.log("default off");
+    client.captureMessage("after console");
+
+    const event = lastEvent();
+    expect(
+      event.breadcrumbs?.some((crumb) => crumb.category === "console") ?? false
+    ).toBe(false);
+
+    client.close();
+    consoleSpy.mockRestore();
+  });
+
+  test("console breadcrumbs are captured when captureConsole is true", () => {
+    const consoleSpy = vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const client = new Client({
+      dsn: DSN,
+      autoInstrument: true,
+      captureConsole: true
+    });
+
+    console.log("explicit on");
+    client.captureMessage("after console");
+
+    const event = lastEvent();
+    expect(event.breadcrumbs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          category: "console",
+          level: "info",
+          message: "explicit on"
+        })
+      ])
+    );
+
+    client.close();
+    consoleSpy.mockRestore();
   });
 
   test("circular scope data never throws and the event is still sent", () => {

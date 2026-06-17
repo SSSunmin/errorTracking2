@@ -76,9 +76,12 @@ export class Client {
     );
 
     if (options.autoInstrument !== false) {
-      this.teardownInstrumentation = instrumentBreadcrumbs((breadcrumb) => {
-        this.breadcrumbs.add(breadcrumb);
-      });
+      this.teardownInstrumentation = instrumentBreadcrumbs(
+        (breadcrumb) => {
+          this.breadcrumbs.add(breadcrumb);
+        },
+        { captureConsole: options.captureConsole ?? false }
+      );
       this.installGlobalHandlers();
     }
   }

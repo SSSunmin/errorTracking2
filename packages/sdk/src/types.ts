@@ -48,4 +48,6 @@ export interface InitOptions {
   maxBreadcrumbs?: number;
   /** Auto-install global error/rejection handlers + breadcrumb instrumentation (default true). */
   autoInstrument?: boolean;
+  /** Capture console.* calls as breadcrumbs when enabled (default false). */
+  captureConsole?: boolean;
 }
