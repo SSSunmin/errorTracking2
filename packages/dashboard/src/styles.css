@@ -134,6 +134,18 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 .card.success { border-color: var(--ok); }
 .card.row { display: flex; align-items: center; justify-content: space-between; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+.event-nav-head { align-items: flex-start; flex-wrap: wrap; }
+.event-nav-head h3 { margin: 0; }
+.event-nav {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.event-nav button { padding: 0.3rem 0.55rem; }
+.event-nav select { max-width: min(100%, 360px); padding: 0.3rem 0.5rem; }
+.event-nav-note { margin: 0.5rem 0 0; }
 .list { display: flex; flex-direction: column; gap: 0.75rem; }
 
 .create-project { display: flex; flex-direction: column; gap: 0.4rem; }
@@ -161,6 +173,7 @@ table.issues td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border
   text-transform: uppercase;
   letter-spacing: 0.03em;
 }
+.badge.latest { background: var(--accent-soft); color: var(--primary-darker); }
 .level-error, .level-fatal { background: var(--negative-container); color: var(--negative); }
 /* 경고는 노랑 텍스트가 노랑 배경에서 거의 안 보여, 양 모드에서 대비가 확보되는
    neutral-darkest(라이트=짙은 회색/다크=밝은 회색)로 글자색을 잡는다. */

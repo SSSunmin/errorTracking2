@@ -43,6 +43,23 @@ const str = (value: unknown): string => (typeof value === "string" ? value : "")
 const joinParts = (...parts: string[]): string =>
   parts.filter((part) => part !== "").join(" ");
 
+const formatAbsoluteTime = (value: string): string =>
+  new Date(value).toLocaleString("ko-KR");
+
+const eventOptionLabel = (event: {
+  receivedAt: string;
+  environment: string | null;
+  exceptionType: string | null;
+  level: string;
+}): string =>
+  [
+    relativeTime(event.receivedAt),
+    event.environment ?? "",
+    event.exceptionType ?? event.level
+  ]
+    .filter((part) => part !== "")
+    .join(" · ");
+
 /** Flatten event.contexts (browser/os/device) + raw User-Agent into a simple
  *  label→value record for display. Empty when nothing was captured. */
 const buildEnvironment = (
@@ -93,6 +110,7 @@ export const IssueDetailPage = (): ReactNode => {
   const { projectId = "", issueId = "" } = useParams();
   const queryClient = useQueryClient();
   const [window, setWindow] = useState<"24h" | "7d">("24h");
+  const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const issue = useQuery({
     queryKey: ["issue", projectId, issueId],
@@ -120,10 +138,18 @@ export const IssueDetailPage = (): ReactNode => {
   if (!issue.data) return <p className="error">이슈를 찾을 수 없습니다.</p>;
 
   const detail = issue.data.issue;
-  const latest = events.data?.events[0];
-  const frames = getFrames(latest?.stacktrace);
-  const breadcrumbs = asArray(latest?.breadcrumbs);
-  const environment = buildEnvironment(latest?.contexts, latest?.userAgent ?? null);
+  const eventList = events.data?.events ?? [];
+  const selected =
+    eventList.find((event) => event.id === selectedEventId) ?? eventList[0];
+  const selectedIndex = selected
+    ? eventList.findIndex((event) => event.id === selected.id)
+    : -1;
+  const frames = getFrames(selected?.stacktrace);
+  const breadcrumbs = asArray(selected?.breadcrumbs);
+  const environment = buildEnvironment(selected?.contexts, selected?.userAgent ?? null);
+  const hasMultipleEvents = eventList.length > 1;
+  const canSelectNewer = selectedIndex > 0;
+  const canSelectOlder = selectedIndex >= 0 && selectedIndex < eventList.length - 1;
 
   return (
     <div className="page">
@@ -216,6 +242,11 @@ export const IssueDetailPage = (): ReactNode => {
           <p className="error">이벤트를 불러오지 못했습니다.</p>
         </section>
       )}
+      {!events.isLoading && !events.isError && eventList.length === 0 && (
+        <section className="card">
+          <p className="muted">이벤트 없음</p>
+        </section>
+      )}
 
       {frames.length > 0 && (
         <section className="card">
@@ -234,32 +265,90 @@ export const IssueDetailPage = (): ReactNode => {
         </section>
       )}
 
-      {latest && (
+      {selected && (
         <section className="card">
-          <h3>최근 이벤트</h3>
-          {latest.exceptionType && (
-            <p>
-              <strong>{latest.exceptionType}</strong>: {latest.exceptionValue}
+          <div className="card-head event-nav-head">
+            <h3>최근 이벤트</h3>
+            <div className="event-nav" aria-label="이벤트 발생 선택">
+              <span className="muted">
+                발생 {selectedIndex + 1}/{eventList.length}
+              </span>
+              <span
+                className="muted small"
+                title={formatAbsoluteTime(selected.receivedAt)}
+              >
+                {relativeTime(selected.receivedAt)}
+              </span>
+              {selectedIndex === 0 && <span className="badge latest">최신</span>}
+              {hasMultipleEvents && (
+                <>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!canSelectOlder}
+                    onClick={() => {
+                      const older = eventList[selectedIndex + 1];
+                      if (older) setSelectedEventId(older.id);
+                    }}
+                  >
+                    ← 이전
+                  </button>
+                  <button
+                    type="button"
+                    className="ghost"
+                    disabled={!canSelectNewer}
+                    onClick={() => {
+                      const newer = eventList[selectedIndex - 1];
+                      if (newer) setSelectedEventId(newer.id);
+                    }}
+                  >
+                    다음 →
+                  </button>
+                  <select
+                    aria-label="이벤트 발생 선택"
+                    value={selected.id}
+                    onChange={(event) => {
+                      setSelectedEventId(event.target.value);
+                    }}
+                  >
+                    {eventList.map((event) => (
+                      <option key={event.id} value={event.id}>
+                        {eventOptionLabel(event)}
+                      </option>
+                    ))}
+                  </select>
+                </>
+              )}
+            </div>
+          </div>
+          {events.data?.nextCursor && (
+            <p className="muted small event-nav-note">
+              최근 {eventList.length}건만 표시됩니다.
             </p>
           )}
-          {latest.message && <p>{latest.message}</p>}
-          {latest.requestUrl && <p className="muted small">{latest.requestUrl}</p>}
+          {selected.exceptionType && (
+            <p>
+              <strong>{selected.exceptionType}</strong>: {selected.exceptionValue}
+            </p>
+          )}
+          {selected.message && <p>{selected.message}</p>}
+          {selected.requestUrl && <p className="muted small">{selected.requestUrl}</p>}
           {Object.keys(environment).length > 0 && (
             <>
               <h4>환경</h4>
               <KeyValues data={environment} />
             </>
           )}
-          {Object.keys(asRecord(latest.tags)).length > 0 && (
+          {Object.keys(asRecord(selected.tags)).length > 0 && (
             <>
               <h4>태그</h4>
-              <KeyValues data={asRecord(latest.tags)} />
+              <KeyValues data={asRecord(selected.tags)} />
             </>
           )}
-          {Object.keys(asRecord(latest.userContext)).length > 0 && (
+          {Object.keys(asRecord(selected.userContext)).length > 0 && (
             <>
               <h4>사용자</h4>
-              <KeyValues data={asRecord(latest.userContext)} />
+              <KeyValues data={asRecord(selected.userContext)} />
             </>
           )}
           {breadcrumbs.length > 0 && (
