@@ -4,7 +4,7 @@ title: 브라우저 SDK
 description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음).'
 resource: packages/sdk/src/index.ts
 tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack]
-timestamp: 2026-06-16
+timestamp: 2026-06-17
 ---
 
 # 브라우저 SDK (`@mini-sentry/sdk`)
@@ -79,6 +79,7 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 | `data-environment` | `InitOptions.environment` |
 | `data-release` | `InitOptions.release` |
 | `data-auto-instrument` | `"false"`이면 자동 계측 비활성화. 기본 활성(`true`) |
+| `data-capture-console` | `"true"`이면 console 브레드크럼 수집 활성화. 기본 비활성(`false`) |
 
 `data-dsn`도 없고 `data-key`/`data-project`도 모두 없으면 자동 init을 건너뛴다(수동 `MiniSentry.init()` 사용 가능).
 
@@ -152,14 +153,34 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 
 `autoInstrument !== false` 일 때 활성화. teardown 함수 반환으로 정리 가능.
 
-| 계측 대상 | breadcrumb type | category |
-|---|---|---|
-| `console.log/info/warn/error` | debug | console |
-| document click | default | ui.click |
-| `window.popstate` | navigation | navigation |
-| `history.pushState/replaceState` (SPA) | navigation | navigation |
+시그니처: `instrumentBreadcrumbs(add, options?: { captureConsole?: boolean })`
 
-콘솔 계측은 재귀 방지 플래그(`inConsoleHook`) 보유.
+| 계측 대상 | breadcrumb type | category | 기본 동작 |
+|---|---|---|---|
+| `console.log/info/warn/error` | debug | console | **기본 off** — `options.captureConsole === true`일 때만 설치 |
+| document click | default | ui.click | 항상 on |
+| `window.popstate` | navigation | navigation | 항상 on |
+| `history.pushState/replaceState` (SPA) | navigation | navigation | 항상 on |
+
+console 계측은 재귀 방지 플래그(`inConsoleHook`) 보유.
+
+### console 브레드크럼 활성화 방법
+
+기본적으로 console(`log`/`info`/`warn`/`error`) 브레드크럼은 수집되지 않는다. 활성화하려면 두 가지 방법 중 하나를 사용한다:
+
+**ESM `init` 옵션 사용:**
+```ts
+MiniSentry.init({ dsn: '...', captureConsole: true });
+```
+
+**스크립트 태그 `data-capture-console` 속성 사용:**
+```html
+<script
+  src="https://sentry.example.com/sdk/mini-sentry.min.js"
+  data-dsn="https://pub_abc123@sentry.example.com/1"
+  data-capture-console="true"
+></script>
+```
 
 ## V8 스택 파싱 (`parseStack`)
 
@@ -187,6 +208,7 @@ V8/Chromium `Error.stack` 형식(`at fn (loc)` 또는 `at loc`) 파싱.
 | `environment` | string | - | 환경 (production 등) |
 | `maxBreadcrumbs` | number | 50 | breadcrumb 버퍼 크기 |
 | `autoInstrument` | boolean | true | 전역 핸들러 + breadcrumb 계측 자동 설치 |
+| `captureConsole` | boolean | false | console 브레드크럼 수집 여부. 기본 비활성. `true`로 설정해야 console.log/info/warn/error를 breadcrumb으로 수집 |
 
 ## 관련 개념
 - [인제스트 API](/api/ingest-api.md)

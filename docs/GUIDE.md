@@ -157,30 +157,7 @@ MiniSentry.init({
 ```
 
 React 렌더링 에러는 `ErrorBoundary`에서 수동으로 캡처할 수 있습니다.
-
-```tsx
-import { Component, type ReactNode } from "react";
-import * as MiniSentry from "@mini-sentry/sdk";
-
-class ErrorBoundary extends Component<
-  { children: ReactNode },
-  { hasError: boolean }
-> {
-  state = { hasError: false };
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  componentDidCatch(error: Error) {
-    MiniSentry.captureException(error);
-  }
-
-  render() {
-    return this.state.hasError ? <p>문제가 발생했습니다.</p> : this.props.children;
-  }
-}
-```
+완성형 React 구성 예시는 [4-5. React 프로젝트에 추가하기](#4-5-react-프로젝트에-추가하기)에서 이어서 설명합니다.
 
 tarball import 방식은 타입 선언이 함께 설치되어 React/번들러 프로젝트에서 타입 지원을 받을 수 있고, script 태그 방식은 빌드 설정 없이 HTML에 바로 붙이는 드롭인 방식입니다.
 
@@ -195,6 +172,7 @@ MiniSentry.init({
   environment: "production",      // 선택: production | staging | ...
   // maxBreadcrumbs: 50,          // 선택: 행적 버퍼 크기 (기본 50)
   // autoInstrument: true,        // 선택: 전역 에러 핸들러 + breadcrumb 자동 설치 (기본 true)
+  // captureConsole: false,       // 선택: console.* breadcrumb 수집 여부 (기본 false)
 });
 ```
 
@@ -202,7 +180,8 @@ MiniSentry.init({
 
 - **잡히지 않은 에러** (`window.onerror`) 자동 수집
 - **처리되지 않은 Promise 거부** (`unhandledrejection`) 자동 수집
-- **Breadcrumb**(에러 직전 행적): 콘솔 로그·클릭·SPA 네비게이션 자동 기록
+- **Breadcrumb**(에러 직전 행적): 클릭·SPA 네비게이션 자동 기록
+- `console.log/info/warn/error`는 기본 수집하지 않습니다. 필요할 때만 `captureConsole: true`를 켭니다.
 
 > DSN 형식이 틀려도 `init`은 **예외를 던지지 않고** `null`을 반환합니다 — SDK 설정 실수가 앱을 멈추지 않습니다.
 
@@ -219,6 +198,7 @@ MiniSentry.init({
 - 터널이나 임시 호스트를 다시 열었을 때는 `src`의 host만 바꾸면 됩니다. `data-key`와 `data-project`는 그대로 둘 수 있습니다.
 - 이미 전체 DSN을 알고 있으면 `data-dsn`을 사용할 수 있습니다. `data-dsn`이 있으면 `data-key`/`data-project`보다 우선합니다.
 - `data-auto-instrument="false"`를 지정하면 `window.onerror`와 `unhandledrejection` 자동 캡처를 끕니다. 지정하지 않으면 기본값은 켜짐입니다.
+- `data-capture-console="true"`를 지정하면 `console.log/info/warn/error` 호출도 breadcrumb로 남깁니다. 지정하지 않으면 기본값은 꺼짐입니다.
 - `data-environment`, `data-release`를 함께 넣으면 이후 이벤트에 포함됩니다.
 
 전체 DSN을 직접 넣는 예:
@@ -276,31 +256,205 @@ MiniSentry.setUser(null);
 
 > SDK는 URL의 쿼리/해시를 제외하고 보내며(토큰·PII 유출 방지), 순환참조도 안전하게 직렬화합니다.
 
-### 4-5. React 예시
+### 4-5. React 프로젝트에 추가하기
 
-```tsx
-// main.tsx — 앱 부팅 전에 init
+이 절은 샘플 쇼핑몰에서 실제로 구성한 방식처럼, React 번들러 프로젝트에 `@mini-sentry/sdk`를 추가한 뒤 앱 진입점과 `ErrorBoundary`를 연결하는 예시입니다. 설치, tarball, script 태그, 기본 수동 캡처는 앞 절에서 다뤘으므로 여기서는 React 구성에만 집중합니다.
+
+#### 4-5-1. 초기화 모듈 만들기
+
+`src/sentry.ts`처럼 SDK 초기화를 한 곳에 모아두면 앱 진입점에서 한 번만 호출하기 쉽습니다.
+
+```ts
+// src/sentry.ts
 import * as MiniSentry from "@mini-sentry/sdk";
 
-MiniSentry.init({
-  dsn: import.meta.env.VITE_SENTRY_DSN,
-  release: __APP_VERSION__,
-  environment: import.meta.env.MODE,
-});
+export const initSentry = () =>
+  MiniSentry.init({
+    dsn: import.meta.env.VITE_SENTRY_DSN,
+    autoInstrument: true,
+    environment: "production",
+    // release: "web@1.0.0",
+    // captureConsole: true,
+  });
+```
 
-// ErrorBoundary에서 렌더 에러 캡처
-import { Component, type ReactNode } from "react";
+DSN은 프로젝트 생성 시 받은 값을 사용합니다.
 
-class ErrorBoundary extends Component<{ children: ReactNode }, { hasError: boolean }> {
-  state = { hasError: false };
-  static getDerivedStateFromError() { return { hasError: true }; }
-  componentDidCatch(error: Error) {
-    MiniSentry.captureException(error); // 렌더 트리 밖 에러도 수집
+```text
+http://<publicKey>@<host>/<projectId>
+예) http://<publicKey>@localhost:4100/<projectId>
+```
+
+로컬에서는 host가 `localhost:4100`이고, 배포 환경에서는 실제로 접근 가능한 공개 호스트를 넣습니다.
+
+주요 옵션:
+
+| 옵션 | 설명 |
+|---|---|
+| `autoInstrument` | 기본 `true`. 클릭, 네비게이션 breadcrumb와 전역 `window.onerror`/`unhandledrejection` 핸들러를 설치합니다. |
+| `environment` | 이벤트가 어느 환경에서 발생했는지 표시합니다. 예: `production`, `staging`. |
+| `release` | 선택값. 배포 버전이나 빌드 식별자를 이벤트에 붙입니다. |
+| `captureConsole` | 기본 `false`. `console.log/info/warn/error` 호출을 breadcrumb로 남기고 싶을 때만 `true`로 켭니다. |
+
+#### 4-5-2. 앱 진입점에서 렌더 전에 초기화하기
+
+`initSentry()`는 모듈 최상단에서 한 번 호출합니다. React 렌더링 에러는 `ErrorBoundary`가 잡을 수 있도록 라우터와 앱을 감쌉니다.
+
+```tsx
+// src/main.tsx
+import ReactDOM from "react-dom/client";
+import { BrowserRouter } from "react-router-dom";
+import { App } from "./App";
+import { ErrorBoundary } from "./ErrorBoundary";
+import { initSentry } from "./sentry";
+
+initSentry();
+
+ReactDOM.createRoot(document.getElementById("root")!).render(
+  <ErrorBoundary>
+    <BrowserRouter>
+      <App />
+    </BrowserRouter>
+  </ErrorBoundary>
+);
+```
+
+`BrowserRouter`는 history API(`pushState`/`replaceState`)를 사용합니다. SDK의 자동 breadcrumb 계측은 이 history API를 감싸기 때문에 React Router 페이지 이동이 `navigation` breadcrumb로 기록됩니다. `HashRouter` 기준의 동작은 이 가이드에서 다루지 않습니다.
+
+#### 4-5-3. ErrorBoundary 컴포넌트
+
+`ErrorBoundary`는 React 렌더링 단계에서 발생한 에러를 폴백 UI로 바꾸고, `componentDidCatch`에서 Mini-Sentry로 보냅니다. `componentStack`을 같은 이벤트에 첨부하려면 `setContext`를 먼저 호출한 뒤 `captureException`을 호출합니다.
+
+```tsx
+// src/ErrorBoundary.tsx
+import { Component, type ErrorInfo, type ReactNode } from "react";
+import * as MiniSentry from "@mini-sentry/sdk";
+
+type Props = {
+  children: ReactNode;
+};
+
+type State = {
+  hasError: boolean;
+};
+
+export class ErrorBoundary extends Component<Props, State> {
+  state: State = { hasError: false };
+
+  static getDerivedStateFromError() {
+    return { hasError: true };
   }
+
+  componentDidCatch(error: Error, errorInfo: ErrorInfo) {
+    MiniSentry.setContext("react.error_boundary", {
+      componentStack: errorInfo.componentStack,
+    });
+    MiniSentry.captureException(error);
+  }
+
+  private reset = () => {
+    this.setState({ hasError: false });
+  };
+
+  private goHome = () => {
+    this.setState({ hasError: false }, () => {
+      window.location.assign("/");
+    });
+  };
+
   render() {
-    return this.state.hasError ? <p>문제가 발생했습니다.</p> : this.props.children;
+    if (!this.state.hasError) {
+      return this.props.children;
+    }
+
+    return (
+      <main role="alert">
+        <h1>문제가 발생했습니다.</h1>
+        <p>화면을 다시 시도하거나 홈으로 이동할 수 있습니다.</p>
+        <button type="button" onClick={this.reset}>
+          다시 시도
+        </button>
+        <button type="button" onClick={this.goHome}>
+          홈으로
+        </button>
+      </main>
+    );
   }
 }
+```
+
+주의할 점: `ErrorBoundary`는 렌더링 단계 에러만 잡습니다. 이벤트 핸들러와 비동기 에러는 React Error Boundary가 잡지 않으므로 아래 경로를 함께 사용합니다.
+
+#### 4-5-4. 에러가 잡히는 4가지 경로
+
+| 경로 | 동작 |
+|---|---|
+| 렌더링 에러 | `ErrorBoundary`가 폴백을 표시하고 `componentDidCatch`에서 `MiniSentry.captureException(error)`로 전송합니다. |
+| 수동 캡처 | `try/catch` 또는 이벤트 핸들러에서 `MiniSentry.captureException(err)`를 직접 호출합니다. 예를 들어 결제 실패를 잡아 보내면 UI는 죽지 않습니다. |
+| 처리되지 않은 동기 예외 | 이벤트 핸들러에서 `throw`한 예외처럼 처리되지 않은 동기 예외는 `autoInstrument`의 전역 `window.onerror` 핸들러가 자동 캡처합니다. |
+| 처리되지 않은 Promise 거부 | `Promise` 거부가 처리되지 않으면 전역 `unhandledrejection` 핸들러가 자동 캡처합니다. |
+
+이벤트 핸들러에서 UI를 유지하며 보내는 예:
+
+```tsx
+const handleCheckout = async () => {
+  try {
+    await submitPayment();
+  } catch (err) {
+    MiniSentry.captureException(err);
+    setPaymentError("결제에 실패했습니다. 다시 시도해 주세요.");
+  }
+};
+```
+
+#### 4-5-5. 브레드크럼으로 에러 직전 발자취 보기
+
+`autoInstrument`가 켜져 있으면 다음 breadcrumb가 자동으로 쌓입니다.
+
+| 종류 | category | 설명 |
+|---|---|---|
+| 클릭 | `ui.click` | 사용자가 클릭한 DOM 대상을 기록합니다. |
+| 네비게이션 | `navigation` | `BrowserRouter`의 history API 이동을 기록합니다. |
+
+`console.log/info/warn/error`는 기본 수집하지 않습니다. 필요할 때만 초기화 옵션에서 켭니다.
+
+```ts
+MiniSentry.init({
+  dsn: import.meta.env.VITE_SENTRY_DSN,
+  captureConsole: true,
+});
+```
+
+script 태그 방식에서는 다음 속성을 사용합니다.
+
+```html
+<script src="https://<host>/sdk/mini-sentry.min.js"
+        data-dsn="https://<publicKey>@<host>/<projectId>"
+        data-capture-console="true"></script>
+```
+
+수동 breadcrumb는 필요한 업무 흐름에 직접 남길 수 있습니다.
+
+```ts
+MiniSentry.addBreadcrumb({
+  type: "default",
+  category: "checkout",
+  message: "사용자가 결제 버튼 클릭",
+  level: "info",
+});
+```
+
+breadcrumb는 최근 50개가 롤링 버퍼로 유지되고, 에러나 메시지를 캡처하는 시점의 스냅샷이 이벤트에 첨부됩니다. 대시보드 이슈 상세에서는 같은 이슈 안에서도 발생 이벤트별 breadcrumb를 따로 확인할 수 있습니다.
+
+#### 4-5-6. 추가 컨텍스트 API
+
+사용자, 태그, 업무 컨텍스트, 메시지를 함께 남길 수 있습니다.
+
+```ts
+MiniSentry.setUser({ id: "user_123", email: "me@example.com" });
+MiniSentry.setTag("plan", "pro");
+MiniSentry.setContext("cart", { items: 3, total: 42000 });
+MiniSentry.captureMessage("결제 응답이 예상보다 늦습니다", "warning");
 ```
 
 ### 4-6. 동작 확인 (스모크 테스트)
@@ -404,7 +558,7 @@ curl -X POST http://localhost:4100/api/projects/<projectId>/alert-rules \
 | `getClient()` | 현재 클라이언트 조회 |
 | `close()` | 전역 핸들러 해제 + 클라이언트 종료 |
 
-`init` 옵션: `dsn`(필수), `release?`, `environment?`, `maxBreadcrumbs?`(기본 50), `autoInstrument?`(기본 true).
+`init` 옵션: `dsn`(필수), `release?`, `environment?`, `maxBreadcrumbs?`(기본 50), `autoInstrument?`(기본 true), `captureConsole?`(기본 false).
 
 ---
 

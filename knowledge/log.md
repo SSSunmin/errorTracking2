@@ -2,6 +2,11 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-17 (SDK console 브레드크럼 기본 비활성화)
+- `console.log/info/warn/error` 브레드크럼 수집이 기본 off로 변경. `InitOptions.captureConsole`(`packages/sdk/src/types.ts`)이 추가됐으며 기본값 `false`. `instrumentBreadcrumbs`의 시그니처가 `options?: { captureConsole?: boolean }`을 받도록 변경되고, console 후킹은 `captureConsole === true`일 때만 설치(`packages/sdk/src/breadcrumbs.ts`). 클릭·네비게이션 계측은 변경 없이 항상 on 유지.
+- 스크립트 태그 드롭인에서는 `data-capture-console="true"` 속성으로 활성화 가능(`packages/sdk/src/loader-options.ts`).
+- 갱신: `architecture/sdk`(Breadcrumb 자동 계측 표에 기본 동작 열 추가 + console 활성화 방법 예시 추가, `data-*` 속성 표에 `data-capture-console` 추가, `InitOptions`에 `captureConsole` 항목 추가, `timestamp` 갱신).
+
 ## 2026-06-16 (SDK tarball 배포 방식 추가)
 - `@mini-sentry/sdk`를 `npm pack`으로 tarball 배포하는 방법 추가. `private: true`(publish 차단)를 유지한 채 `files: ["dist"]` + `prepack` 훅으로 dist를 tarball에 포함. 외부 프로젝트에서 `npm i ./mini-sentry-sdk-0.1.0.tgz` 후 ESM import + 타입 사용 가능.
 - `.npmignore` 신규(`.gitignore` 폴백으로 dist 누락되는 문제 방지), `tsconfig.build.json` 신규(선언 빌드에서 테스트 파일 제외).
