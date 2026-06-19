@@ -1,10 +1,10 @@
 ---
 type: API Reference
 title: 인제스트 API
-description: 브라우저 SDK가 에러 이벤트를 전송하는 공개 엔드포인트. DSN 공개키 인증, 퍼미시브 CORS, IP 기반 레이트 리밋, BullMQ 큐 비동기 처리.
+description: 브라우저 SDK가 에러 이벤트를 전송하는 공개 엔드포인트. DSN 공개키 인증, 퍼미시브 CORS, IP 기반 레이트 리밋, BullMQ 큐 비동기 처리. replay 필드로 DOM 스냅샷 수신.
 resource: packages/server/src/modules/ingest/routes.ts
-tags: [api, ingest, events, cors, rate-limit, bullmq]
-timestamp: 2026-06-16
+tags: [api, ingest, events, cors, rate-limit, bullmq, snapshot]
+timestamp: 2026-06-18
 ---
 
 # 인제스트 API
@@ -47,7 +47,7 @@ IP 기준 **50 req / 10초**. `@fastify/rate-limit` 플러그인, `global: false
 
 ## 요청 바디 검증 (`eventPayloadSchema`)
 
-- 최대 바디 크기: **256 KiB** (`bodyLimit`)
+- 최대 바디 크기: **2 MiB** (`bodyLimit: 2 * 1_024 * 1_024`) — replay DOM 스냅샷 수용을 위해 256 KiB에서 상향. per-IP 레이트 리밋(50 req / 10s)이 남용을 제한.
 - 최대 JSON 중첩 깊이: **8**, 배열/오브젝트 키: **100**
 - `message` 또는 `exception` 중 하나 필수
 - `timestamp` 클락 스큐 허용 범위: 과거 **24시간** ~ 미래 **5분**
@@ -64,6 +64,24 @@ IP 기준 **50 req / 10초**. `@fastify/rate-limit` 플러그인, `global: false
 | `tags/user/contexts` | record | 키 최대 256자, 최대 100키 |
 | `release/environment/platform` | string | 최대 256자 |
 | `request.url` | string | 최대 2,048자 |
+| `replay` | object | optional — DOM 스냅샷. 깊이/키 제한 **없음**(DOM 트리는 깊고 넓으므로 별도 제한 적용). `replay.data` 바이트 크기 상한: **1 MiB**(UTF-8 직렬화 기준). `href`(최대 2,048자), `width`/`height`(non-negative int) optional |
+
+### `replay` 필드 상세
+
+`replay`는 `eventPayloadSchema`의 최상위 optional 필드다. 다른 필드들과 달리 `boundedJson` 깊이/키 검증을 **우회**하며, 대신 `replay.data`를 `JSON.stringify` 후 UTF-8 바이트 크기가 **1,048,576 bytes(1 MiB) 이하**인지만 검사한다(`schemas.ts: maxReplayBytes`).
+
+```
+replay: {
+  data:   unknown          // rrweb-snapshot 직렬화 DOM 트리 (불투명)
+  href?:  string           // 캡처 시점 location.href
+  width?: number (int ≥ 0) // window.innerWidth
+  height?: number (int ≥ 0) // window.innerHeight
+}
+```
+
+**저장 동작**: 인제스트 워커가 이벤트를 처리할 때, `replay`가 있으면 `EventSnapshot`을 메인 트랜잭션 **바깥**에서 best-effort로 삽입한다. 스냅샷 저장 실패가 이벤트 자체를 롤백하지 않는다(`process.ts`).
+
+**주의**: `replay` 페이로드(최대 ~1MB)는 BullMQ 잡 데이터로 직렬화되어 Redis에 적재된다 — 스냅샷이 많을수록 Redis 메모리 사용량이 증가한다.
 
 ## BullMQ 큐
 
