@@ -1,5 +1,13 @@
+import { gzipSync, strToU8 } from "fflate";
+import type { eventWithTime } from "rrweb";
+
 import { BreadcrumbBuffer, instrumentBreadcrumbs } from "./breadcrumbs.js";
 import { parseDsn, type DsnComponents } from "./dsn.js";
+import { captureSnapshot } from "./replay.js";
+import {
+  startSessionReplay,
+  type SessionReplayHandle
+} from "./sessionReplay.js";
 import { safeStringify, sanitizeRecord, truncate } from "./serialize.js";
 import { parseStack } from "./stacktrace.js";
 import type {
@@ -14,6 +22,12 @@ export const SDK_NAME = "@mini-sentry/sdk";
 export const SDK_VERSION = "0.1.0";
 
 const DEFAULT_MAX_BREADCRUMBS = 50;
+
+// rrweb records DOM mutations asynchronously (MutationObserver), so the changes
+// that render the error state (e.g. an error boundary swapping in its fallback)
+// aren't in the buffer yet the instant captureException runs. Defer the replay
+// snapshot briefly so those final mutations are flushed in before we upload.
+const REPLAY_FLUSH_DELAY_MS = 250;
 
 interface Scope {
   user?: Record<string, unknown>;
@@ -69,6 +83,8 @@ export class Client {
 
   private teardownGlobalHandlers: (() => void) | null = null;
 
+  private sessionReplay: SessionReplayHandle | null = null;
+
   public constructor(private readonly options: InitOptions) {
     this.dsn = parseDsn(options.dsn);
     this.breadcrumbs = new BreadcrumbBuffer(
@@ -83,6 +99,13 @@ export class Client {
         { captureConsole: options.captureConsole ?? false }
       );
       this.installGlobalHandlers();
+    }
+
+    // Opt-in rolling rrweb recorder (heavier). startSessionReplay is itself
+    // browser-guarded and never throws, but guard the browser check here too so
+    // we don't even reference rrweb in non-DOM runtimes.
+    if (options.sessionReplay === true && typeof document !== "undefined") {
+      this.sessionReplay = startSessionReplay({ maskAllInputs: true });
     }
   }
 
@@ -115,7 +138,37 @@ export class Client {
   public captureException(error: unknown): string {
     const exception =
       error instanceof Error ? errorToException(error) : nonErrorToException(error);
-    return this.send(this.buildEvent("error", { exception }));
+    const event = this.buildEvent("error", { exception });
+    // Capture a masked DOM snapshot at the error moment (default on). A failed
+    // or oversized snapshot simply yields no replay; the event still sends.
+    if (this.options.captureReplay !== false) {
+      const replay = captureSnapshot();
+      if (replay !== undefined) {
+        event.replay = replay;
+      }
+    }
+    const eventId = this.send(event);
+    // Fire-and-forget upload of the rolling rrweb session replay (feature C),
+    // linked to this event by its client-generated eventId. Error path only.
+    // Deferred by REPLAY_FLUSH_DELAY_MS so rrweb flushes the final error-state
+    // mutations into the buffer first (see the constant's note). Best-effort:
+    // captured in a local so a concurrent close() doesn't cancel an in-flight
+    // upload; and on a hard navigation within the delay it may be lost (the main
+    // event above already uses keepalive, so it survives regardless).
+    const sessionReplay = this.sessionReplay;
+    if (sessionReplay) {
+      setTimeout(() => {
+        try {
+          const replayEvents = sessionReplay.snapshot();
+          if (replayEvents.length > 0) {
+            this.sendReplay(eventId, replayEvents);
+          }
+        } catch {
+          /* telemetry must never break the host app */
+        }
+      }, REPLAY_FLUSH_DELAY_MS);
+    }
+    return eventId;
   }
 
   public captureMessage(message: string, level: SeverityLevel = "info"): string {
@@ -125,8 +178,10 @@ export class Client {
   public close(): void {
     this.teardownInstrumentation?.();
     this.teardownGlobalHandlers?.();
+    this.sessionReplay?.stop();
     this.teardownInstrumentation = null;
     this.teardownGlobalHandlers = null;
+    this.sessionReplay = null;
   }
 
   private buildEvent(
@@ -181,6 +236,35 @@ export class Client {
       /* swallow synchronous failures (e.g. fetch unavailable) */
     }
     return event.eventId;
+  }
+
+  /**
+   * Fire-and-forget upload of the rolling rrweb buffer for `eventId`. Gzips the
+   * events with fflate and POSTs the raw bytes to the dedicated replay endpoint
+   * (derived from the same DSN host as ingest). Fully swallowed: a replay must
+   * never break the host app or the event flow.
+   */
+  private sendReplay(eventId: string, events: eventWithTime[]): void {
+    try {
+      const body = gzipSync(strToU8(JSON.stringify(events)));
+      const url =
+        `${this.dsn.replayUrl}?eventId=${encodeURIComponent(eventId)}` +
+        `&count=${String(events.length)}`;
+      void fetch(url, {
+        method: "POST",
+        headers: {
+          "content-type": "application/octet-stream",
+          "x-mini-sentry-key": this.dsn.publicKey
+        },
+        body,
+        keepalive: true,
+        credentials: "omit"
+      }).catch(() => {
+        /* swallow transport errors — replay upload is best-effort */
+      });
+    } catch {
+      /* swallow synchronous failures (gzip/fetch unavailable, oversized, etc.) */
+    }
   }
 
   private installGlobalHandlers(): void {
