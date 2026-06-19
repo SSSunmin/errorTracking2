@@ -437,7 +437,7 @@ describe("ingest", () => {
       headers,
       payload: JSON.stringify({
         ...validEventPayload(),
-        message: "x".repeat(260 * 1_024)
+        message: "x".repeat(2 * 1_024 * 1_024 + 1_000)
       })
     });
     expect(oversized.statusCode).toBe(413);
