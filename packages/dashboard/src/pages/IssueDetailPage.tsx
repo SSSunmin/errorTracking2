@@ -1,8 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Fragment, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
+import { createCache, Mirror, rebuildIntoSandboxedIframe } from "rrweb-snapshot";
+import { EventType, Replayer } from "rrweb";
+import "rrweb/dist/style.css";
 
-import { api, type IssueStatus } from "../api";
+import { api, type EventSnapshot, type IssueStatus, type ReplayEvent } from "../api";
 import { LevelBadge, relativeTime, Spinner, StatsChart, StatusBadge } from "../components";
 
 interface Frame {
@@ -103,6 +106,251 @@ const KeyValues = ({ data }: { data: Record<string, unknown> }): ReactNode => {
         </Fragment>
       ))}
     </dl>
+  );
+};
+
+type RebuildNode = Parameters<typeof rebuildIntoSandboxedIframe>[0];
+
+/** Render a captured DOM snapshot into a sandboxed iframe (no allow-scripts, so
+ *  any captured inline scripts cannot execute). rrweb-snapshot's rebuild() only
+ *  accepts a document created by its own sandboxed-iframe helper, so we let the
+ *  library build and register the iframe (sandbox = "allow-same-origin") into a
+ *  container. Rebuild errors degrade to a muted line rather than breaking the
+ *  page. */
+const SnapshotFrame = ({
+  data,
+  width,
+  height
+}: {
+  data: unknown;
+  width: number | null;
+  height: number | null;
+}): ReactNode => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    setFailed(false);
+    container.replaceChildren();
+    try {
+      const { iframe } = rebuildIntoSandboxedIframe(data as RebuildNode, {
+        root: container,
+        cache: createCache(),
+        mirror: new Mirror()
+      });
+      // Lay the capture out at its original viewport size, then scale the whole
+      // frame down to fit the card width so it reads like a page thumbnail.
+      const captureW = width && width > 0 ? width : 1280;
+      const captureH = height && height > 0 ? height : 800;
+      iframe.setAttribute("scrolling", "no");
+      iframe.style.border = "0";
+      iframe.style.width = `${String(captureW)}px`;
+      iframe.style.height = `${String(captureH)}px`;
+      iframe.style.transformOrigin = "top left";
+      iframe.style.pointerEvents = "none";
+
+      const fit = (): void => {
+        const scale = container.clientWidth / captureW;
+        iframe.style.transform = `scale(${String(scale)})`;
+        container.style.height = `${String(captureH * scale)}px`;
+      };
+      fit();
+      const observer = new ResizeObserver(fit);
+      observer.observe(container);
+      return () => {
+        observer.disconnect();
+      };
+    } catch {
+      setFailed(true);
+    }
+  }, [data, width, height]);
+
+  return (
+    <>
+      <div ref={containerRef} className="snapshot-frame" />
+      {failed && <p className="muted small">스냅샷을 표시할 수 없습니다.</p>}
+    </>
+  );
+};
+
+const SnapshotSection = ({
+  projectId,
+  issueId,
+  eventId
+}: {
+  projectId: string;
+  issueId: string;
+  eventId: string;
+}): ReactNode => {
+  const snapshot = useQuery({
+    queryKey: ["snapshot", projectId, issueId, eventId],
+    queryFn: () => api.getEventSnapshot(projectId, issueId, eventId),
+    // Snapshots are immutable; avoid refetching the ~1MB blob on window focus.
+    staleTime: Infinity
+  });
+
+  const data: EventSnapshot | null | undefined = snapshot.data?.snapshot;
+
+  return (
+    <section className="card">
+      <h3>스냅샷</h3>
+      {snapshot.isLoading && <Spinner />}
+      {snapshot.isError && (
+        <p className="error">스냅샷을 불러오지 못했습니다.</p>
+      )}
+      {!snapshot.isLoading && !snapshot.isError && !data && (
+        <p className="muted">스냅샷 없음</p>
+      )}
+      {data && (
+        <SnapshotFrame data={data.data} width={data.width} height={data.height} />
+      )}
+    </section>
+  );
+};
+
+/** Plays a recorded rrweb session with rrweb's Replayer, mounted imperatively
+ *  into a container ref and CSS-scaled to fit the card. Construction is
+ *  try/catch wrapped so a malformed recording degrades to a muted line instead
+ *  of breaking the page; teardown pauses the player and clears the container. */
+const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const replayerRef = useRef<Replayer | null>(null);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) {
+      return;
+    }
+    setFailed(false);
+    container.replaceChildren();
+
+    // The SDK's rolling-buffer trim keeps events from the last full snapshot,
+    // which drops the leading Meta event that carries the recorded viewport
+    // size. rrweb needs it to size/build the replay iframe (without it nothing
+    // renders), so re-synthesize one when the stream starts at a full snapshot.
+    // The real href/size are lost to the trim; 1280×720 is a placeholder (see
+    // follow-up: keep the real Meta in the SDK trim for correct scaling).
+    const first = events[0];
+    const playerEvents: ReplayEvent[] =
+      first?.type === EventType.FullSnapshot
+        ? [
+            {
+              type: EventType.Meta,
+              data: { href: "", width: 1280, height: 720 },
+              timestamp: first.timestamp
+            },
+            ...events
+          ]
+        : events;
+
+    let replayer: Replayer | null = null;
+    let observer: ResizeObserver | null = null;
+    try {
+      // SECURITY: rrweb replays into an `allow-same-origin`-only sandboxed iframe
+      // (no allow-scripts), so scripts captured from the recorded page do NOT
+      // execute — the DOM is rebuilt by the parent frame via DOM APIs. The
+      // console may log a benign "Blocked script execution" per captured
+      // <script>; that's the sandbox doing its job. Do NOT pass
+      // UNSAFE_replayCanvas (it adds allow-scripts → captured DOM could run in
+      // the dashboard origin → stored XSS); for untrusted recordings in
+      // production, serve the replay view from a separate origin.
+      replayer = new Replayer(
+        playerEvents as unknown as ConstructorParameters<typeof Replayer>[0],
+        { root: container, mouseTail: false, speed: 1 }
+      );
+      replayerRef.current = replayer;
+      replayer.play();
+      // Fit the recorded viewport (placeholder 1280×720) to the card width.
+      // Re-apply on resize so a 0-width first paint can't lock a wrong scale.
+      const fit = (): void => {
+        const wrapper = container.querySelector<HTMLElement>(".replayer-wrapper");
+        if (!wrapper || container.clientWidth === 0) {
+          return;
+        }
+        const scale = container.clientWidth / 1280;
+        wrapper.style.transformOrigin = "top left";
+        wrapper.style.transform = `scale(${String(scale)})`;
+        container.style.height = `${String(Math.round(720 * scale))}px`;
+      };
+      fit();
+      observer = new ResizeObserver(fit);
+      observer.observe(container);
+    } catch (err) {
+      // Surface the real reason in the console while degrading gracefully in UI.
+      console.error("rrweb Replayer failed to initialize", err);
+      setFailed(true);
+    }
+
+    return () => {
+      observer?.disconnect();
+      try {
+        // rrweb's Replayer has no destroy() in v2; pausing, dropping the ref and
+        // clearing the DOM is the available teardown (listeners GC with it).
+        replayer?.pause();
+      } catch {
+        /* ignore teardown failures */
+      }
+      replayerRef.current = null;
+      container.replaceChildren();
+    };
+  }, [events]);
+
+  return (
+    <>
+      <div ref={containerRef} className="replay-player" />
+      {!failed && (
+        <button
+          type="button"
+          className="ghost small replay-restart"
+          onClick={() => {
+            try {
+              replayerRef.current?.play(0);
+            } catch {
+              /* ignore */
+            }
+          }}
+        >
+          ↻ 처음부터 재생
+        </button>
+      )}
+      {failed && <p className="muted small">리플레이를 재생할 수 없습니다.</p>}
+    </>
+  );
+};
+
+const ReplaySection = ({
+  projectId,
+  issueId,
+  eventId
+}: {
+  projectId: string;
+  issueId: string;
+  eventId: string;
+}): ReactNode => {
+  const replay = useQuery({
+    queryKey: ["replay", projectId, issueId, eventId],
+    queryFn: () => api.getEventReplay(projectId, issueId, eventId),
+    // Recordings are immutable; avoid refetching the blob on window focus.
+    staleTime: Infinity
+  });
+
+  const events = replay.data ?? null;
+
+  return (
+    <section className="card">
+      <h3>리플레이</h3>
+      {replay.isLoading && <Spinner />}
+      {replay.isError && <p className="error">리플레이를 불러오지 못했습니다.</p>}
+      {!replay.isLoading && !replay.isError && (!events || events.length === 0) && (
+        <p className="muted">리플레이 없음</p>
+      )}
+      {events && events.length > 0 && <ReplayPlayer events={events} />}
+    </section>
   );
 };
 
@@ -365,6 +613,24 @@ export const IssueDetailPage = (): ReactNode => {
             </>
           )}
         </section>
+      )}
+
+      {selected?.hasSnapshot && (
+        <SnapshotSection
+          key={`snapshot-${selected.id}`}
+          projectId={projectId}
+          issueId={issueId}
+          eventId={selected.id}
+        />
+      )}
+
+      {selected?.hasReplay && (
+        <ReplaySection
+          key={`replay-${selected.id}`}
+          projectId={projectId}
+          issueId={issueId}
+          eventId={selected.id}
+        />
       )}
     </div>
   );

@@ -201,6 +201,28 @@ table.issues td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border
 .kv dt { color: var(--muted); }
 .kv dd { margin: 0; font-family: ui-monospace, monospace; word-break: break-all; }
 
+.snapshot-frame {
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+/* The replay wrapper is CSS-scaled to fit the card; its layout box stays at the
+   recorded size, so clip the overflow instead of showing scrollbars. */
+.replay-player {
+  width: 100%;
+  max-width: 960px;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+.replay-restart {
+  margin-top: 0.5rem;
+}
+
 .dsn-block { margin-top: 0.5rem; }
 .dsn-row { display: flex; align-items: center; gap: 0.5rem; }
 .dsn-row code {
