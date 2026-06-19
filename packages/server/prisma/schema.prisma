@@ -124,9 +124,39 @@ model Event {
   userAgent      String?
   timestamp      DateTime
   receivedAt     DateTime   @default(now())
+  clientEventId  String?
+  snapshot       EventSnapshot?
 
   @@index([issueId, receivedAt])
   @@index([projectId, receivedAt])
+  @@index([clientEventId])
+}
+
+model EventSnapshot {
+  id        String   @id @default(cuid())
+  eventId   String   @unique
+  event     Event    @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  projectId String
+  data      Json
+  href      String?
+  width     Int?
+  height    Int?
+  createdAt DateTime @default(now())
+
+  @@index([projectId])
+}
+
+model EventReplay {
+  id            String   @id @default(cuid())
+  clientEventId String   @unique
+  projectId     String
+  data          Bytes
+  eventCount    Int?
+  durationMs    Int?
+  sizeBytes     Int?
+  createdAt     DateTime @default(now())
+
+  @@index([projectId])
 }
 
 model AlertRule {

@@ -26,7 +26,9 @@ const acceptedResponseSchema = z.object({
 });
 
 const invalidProjectKeyMessage = "Invalid project key";
-const ingestBodyLimitBytes = 256 * 1_024;
+// 2MB accommodates a ~1MB replay DOM snapshot with headroom. The per-IP rate
+// limit (50 req / 10s) bounds abuse of the larger body size.
+const ingestBodyLimitBytes = 2 * 1_024 * 1_024;
 
 const permissiveCors = {
   origin: "*",

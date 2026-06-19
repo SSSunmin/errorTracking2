@@ -3,6 +3,8 @@ import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 
 import { unauthorized } from "../../lib/errors.js";
 import {
+  getEventReplay,
+  getEventSnapshot,
   getIssue,
   getIssueStats,
   listIssueEvents,
@@ -10,6 +12,8 @@ import {
   updateIssueStatus
 } from "./service.js";
 import {
+  eventSnapshotParamsSchema,
+  eventSnapshotResponseSchema,
   issueDetailResponseSchema,
   issueEventsResponseSchema,
   issueParamsSchema,
@@ -80,6 +84,59 @@ export const issueRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
         request.params.issueId,
         request.query
       )
+  );
+
+  app.get(
+    "/:id/issues/:issueId/events/:eventId/snapshot",
+    {
+      schema: {
+        params: eventSnapshotParamsSchema,
+        response: {
+          200: eventSnapshotResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      getEventSnapshot(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId,
+        request.params.eventId
+      )
+  );
+
+  app.get(
+    "/:id/issues/:issueId/events/:eventId/replay",
+    {
+      // The body is raw gzip bytes (not JSON), so this route opts out of zod
+      // response serialization and streams the stored Buffer directly with
+      // content-encoding: gzip — the browser transparently decodes it to JSON.
+      schema: {
+        params: eventSnapshotParamsSchema
+      }
+    },
+    async (request, reply) => {
+      const data = await getEventReplay(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId,
+        request.params.eventId
+      );
+
+      if (data === null) {
+        return reply.status(404).send({
+          error: {
+            code: "NOT_FOUND",
+            message: "Replay not found"
+          }
+        });
+      }
+
+      return reply
+        .header("content-type", "application/json")
+        .header("content-encoding", "gzip")
+        .send(data);
+    }
   );
 
   app.get(
