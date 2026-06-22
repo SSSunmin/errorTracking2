@@ -38,6 +38,7 @@ export interface SentryEvent {
   release?: string;
   environment?: string;
   request?: { url?: string };
+  replay?: { data: unknown; href?: string; width?: number; height?: number };
 }
 
 export interface InitOptions {
@@ -50,4 +51,12 @@ export interface InitOptions {
   autoInstrument?: boolean;
   /** Capture console.* calls as breadcrumbs when enabled (default false). */
   captureConsole?: boolean;
+  /** Capture a masked DOM snapshot at error time (default true). */
+  captureReplay?: boolean;
+  /**
+   * Continuously record the page with rrweb into a rolling ~30s buffer and
+   * upload it on captureException (default false). Loads rrweb, which is
+   * heavier than the single-snapshot capture, so it is opt-in.
+   */
+  sessionReplay?: boolean;
 }

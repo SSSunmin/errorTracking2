@@ -2,6 +2,21 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-19 (session replay 기능 추가 — feature C)
+- **DB**: `EventReplay` 모델 신규(`clientEventId` unique, `projectId` 비정규화, `data` Bytes/BYTEA gzip, `eventCount?`/`durationMs?`/`sizeBytes?` Int?, `@@index([projectId])`). `Event`에 `clientEventId String?` + `@@index([clientEventId])` 추가. 마이그레이션 `20260618083417_add_event_replay`. `database/data-model`(EventReplay 모델 절 신규, Event clientEventId 필드 추가, 모델 수 9→10), `database/erd`(ERD 다이어그램에 `EventReplay` 엔티티 + Event `clientEventId` 필드 추가, 엔티티/관계 설명 표·주의 절 갱신 — EventReplay는 FK 없이 논리적 연결임을 명시).
+- **API 신규**: `api/replay-api` 생성. 업로드(`POST /api/:projectId/replay` — DSN 공개키 인증, 퍼미시브 CORS, RAW gzip octet-stream, 5 MiB 상한, `?eventId&count&durMs`, upsert by clientEventId, 202 응답)와 조회(`GET /api/projects/:id/issues/:issueId/events/:eventId/replay` — JWT 인증, content-encoding:gzip, 404 시 NOT_FOUND) 상세 기술.
+- **이슈 API**: `EventDetail`에 `hasReplay: boolean` 추가(서비스 레이어가 페이지 단위 `EventReplay` 조회로 산출). 신규 엔드포인트 `GET /.../events/:eventId/replay` 문서화. `api/issues-api` 갱신.
+- **SDK**: `InitOptions.sessionReplay?: boolean`(기본 false) 추가(`types.ts`). 신규 `src/sessionReplay.ts` — rrweb `record()`로 30초 롤링 버퍼, `checkoutEveryNms:15000`, `maskAllInputs:true`, `trimReplayBuffer` 순수함수(unit-testable). `src/client.ts` — `captureException`에서 250ms 딜레이 후 fflate `gzipSync` + fetch POST to `replayUrl`(`?eventId&count`). `src/dsn.ts` — `DsnComponents`에 `replayUrl` 추가. 의존성 `rrweb` + `fflate` 추가. `architecture/sdk` 갱신(세션 리플레이 절 신규, DSN 파싱 결과에 replayUrl, InitOptions에 sessionReplay 항목, known limitations 3종 명시).
+- **대시보드**: `IssueDetailPage`에 `ReplaySection`/`ReplayPlayer` 컴포넌트 추가(rrweb `Replayer` 직접 사용, rrweb-player 미사용). `hasReplay` 확인 후 `api.getEventReplay()` TanStack Query 호출(`staleTime:Infinity`). Meta 이벤트(type 4) 합성(1280×720 placeholder). sandbox `allow-same-origin`만, `UNSAFE_replayCanvas` 미사용. `api.ts`에 `ReplayEvent` 인터페이스 + `getEventReplay()` 추가. `architecture/dashboard` 갱신(ReplaySection/ReplayPlayer 동작 상세, API 클라이언트 표에 replay 엔드포인트 추가).
+- **index.md**: 데이터 모델 모델 수 9→10, ERD 설명 갱신, 이슈 API 설명 갱신, `api/replay-api` 항목 신규 추가.
+
+## 2026-06-18 (error-moment DOM snapshot 기능 추가)
+- **DB**: `EventSnapshot` 모델 신규(`eventId` unique FK→Event Cascade, `projectId` 비정규화, `data` Json, `href?`, `width?`, `height?`, `@@index([projectId])`). 마이그레이션 `20260618065758_add_event_snapshot`. `Event`에 `snapshot EventSnapshot?` back-relation 추가. `database/data-model`(EventSnapshot 모델 절 + Event back-relation 추가, 모델 수 8→9), `database/erd`(ERD 다이어그램에 `EventSnapshot` 엔티티·관계 추가, 엔티티/관계 설명 표 추가, 표기/주의 절 갱신).
+- **인제스트 API**: 바디 상한 256 KiB → **2 MiB** 상향. `eventPayloadSchema`에 optional `replay` 필드 추가(깊이/키 제한 우회, data 바이트 ≤1 MiB). `process.ts`에서 스냅샷을 메인 트랜잭션 **바깥** best-effort 삽입. `api/ingest-api` 갱신(바디 한도, replay 필드 상세, 저장 동작, Redis 메모리 주의사항).
+- **이슈 API**: `EventDetail`에 `hasSnapshot: boolean` 추가. 신규 엔드포인트 `GET /:id/issues/:issueId/events/:eventId/snapshot` → `{ snapshot: { data, href, width, height } | null }`. `api/issues-api` 갱신(새 엔드포인트 절, EventDetail 타입에 hasSnapshot 설명 추가).
+- **SDK**: `InitOptions.captureReplay?: boolean`(기본 true) 추가(`types.ts`). 신규 `src/replay.ts` — `rrweb-snapshot snapshot(document, {maskAllInputs:true, inlineStylesheet:true})`으로 DOM 캡처, `captureException`에서만 호출. 의존성 `rrweb-snapshot: "2.0.1"` 추가. `architecture/sdk` 갱신(DOM 스냅샷 캡처 절 신규, `captureReplay` InitOptions 항목 추가, 알려진 한계 명시, 관련 개념 갱신).
+- **대시보드**: `IssueDetailPage`에 `SnapshotSection`/`SnapshotFrame` 컴포넌트 추가 — `hasSnapshot` 확인 후 스냅샷 API 호출, `rebuildIntoSandboxedIframe`으로 sandboxed iframe 렌더링(스크립트 실행 없음). `architecture/dashboard` 갱신(IssueDetailPage 스냅샷 렌더링 동작 추가, API 클라이언트 표에 snapshot 엔드포인트 추가).
+
 ## 2026-06-17 (SDK console 브레드크럼 기본 비활성화)
 - `console.log/info/warn/error` 브레드크럼 수집이 기본 off로 변경. `InitOptions.captureConsole`(`packages/sdk/src/types.ts`)이 추가됐으며 기본값 `false`. `instrumentBreadcrumbs`의 시그니처가 `options?: { captureConsole?: boolean }`을 받도록 변경되고, console 후킹은 `captureConsole === true`일 때만 설치(`packages/sdk/src/breadcrumbs.ts`). 클릭·네비게이션 계측은 변경 없이 항상 on 유지.
 - 스크립트 태그 드롭인에서는 `data-capture-console="true"` 속성으로 활성화 가능(`packages/sdk/src/loader-options.ts`).

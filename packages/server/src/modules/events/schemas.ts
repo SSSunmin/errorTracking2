@@ -14,6 +14,7 @@ const maxLongTextLength = 8_192;
 const maxMediumTextLength = 1_024;
 const maxShortTextLength = 256;
 const maxUrlLength = 2_048;
+const maxReplayBytes = 1_048_576;
 
 const isBoundedJsonValue = (value: unknown, depth = 0): boolean => {
   if (depth > maxJsonDepth) {
@@ -98,7 +99,24 @@ export const eventPayloadSchema = z
         headers: boundedJsonRecordSchema.optional()
       })
       .optional(),
-    serverName: z.string().max(maxShortTextLength).optional()
+    serverName: z.string().max(maxShortTextLength).optional(),
+    // A full DOM snapshot is deep and wide, so it bypasses the boundedJson
+    // depth/key limits and is instead bounded by serialized byte size.
+    replay: z
+      .object({
+        data: z.unknown(),
+        href: z.string().max(maxUrlLength).optional(),
+        width: z.number().int().nonnegative().optional(),
+        height: z.number().int().nonnegative().optional()
+      })
+      .refine((r) => {
+        try {
+          return Buffer.byteLength(JSON.stringify(r.data ?? null), "utf8") <= maxReplayBytes;
+        } catch {
+          return false;
+        }
+      }, "replay snapshot exceeds size limit")
+      .optional()
   })
   .superRefine((payload, context) => {
     if (!payload.message && !payload.exception) {

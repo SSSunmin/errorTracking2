@@ -20,6 +20,7 @@ import { closeIngestQueue } from "./lib/queue.js";
 import { authRoutes } from "./modules/auth/routes.js";
 import { ingestRoutes, type IngestRoutesOptions } from "./modules/ingest/routes.js";
 import { projectRoutes } from "./modules/projects/routes.js";
+import { replayRoutes } from "./modules/replay/routes.js";
 import { authPlugin } from "./plugins/auth.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -161,6 +162,7 @@ export const buildApp = (options: BuildAppOptions = {}): FastifyInstance => {
   }
   void app.register(authPlugin);
   void app.register(ingestRoutes, { prefix: "/api", ...options.ingest });
+  void app.register(replayRoutes, { prefix: "/api" });
   void app.register(authRoutes, { prefix: "/api/auth" });
   void app.register(projectRoutes, { prefix: "/api/projects" });
 

@@ -55,7 +55,7 @@ const processEventOnce = async (
   // own contexts (if any) take precedence over the server-derived ones.
   const contexts = mergeEventContexts(payload.contexts, meta.userAgent);
 
-  return prisma.$transaction(async (tx) => {
+  const result = await prisma.$transaction(async (tx) => {
     const existingIssue = await tx.issue.findUnique({
       where: {
         projectId_fingerprint: {
@@ -137,6 +137,9 @@ const processEventOnce = async (
         ...(payload.request?.url !== undefined
           ? { requestUrl: payload.request.url }
           : {}),
+        ...(payload.eventId !== undefined
+          ? { clientEventId: payload.eventId }
+          : {}),
         timestamp: eventTimestamp,
         receivedAt: now
       },
@@ -150,6 +153,29 @@ const processEventOnce = async (
       regressed
     };
   });
+
+  // Best-effort snapshot insert OUTSIDE the transaction: a snapshot failure must
+  // never roll back (and so lose) the error event. `eventId` is unique and each
+  // successful transaction creates a fresh event row, so this runs once per
+  // event — including on the fingerprint-conflict retry path.
+  if (payload.replay !== undefined) {
+    try {
+      await prisma.eventSnapshot.create({
+        data: {
+          eventId: result.eventId,
+          projectId,
+          data: toJson(payload.replay.data),
+          ...(payload.replay.href !== undefined ? { href: payload.replay.href } : {}),
+          ...(payload.replay.width !== undefined ? { width: payload.replay.width } : {}),
+          ...(payload.replay.height !== undefined ? { height: payload.replay.height } : {})
+        }
+      });
+    } catch {
+      /* snapshot is best-effort; never lose the event because of it */
+    }
+  }
+
+  return result;
 };
 
 const isIssueFingerprintConflict = (error: unknown): boolean => {

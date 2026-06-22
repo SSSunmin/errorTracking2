@@ -1,6 +1,8 @@
 export interface DsnComponents {
   /** Full ingest endpoint, e.g. http://host/api/<projectId>/store */
   ingestUrl: string;
+  /** Full session-replay upload endpoint, e.g. http://host/api/<projectId>/replay */
+  replayUrl: string;
   publicKey: string;
   projectId: string;
 }
@@ -33,9 +35,12 @@ export const parseDsn = (dsn: string): DsnComponents => {
     throw new Error("Invalid DSN: missing project id");
   }
 
+  const apiBase = `${url.protocol}//${url.host}/api/${projectId}`;
+
   return {
     publicKey,
     projectId,
-    ingestUrl: `${url.protocol}//${url.host}/api/${projectId}/store`
+    ingestUrl: `${apiBase}/store`,
+    replayUrl: `${apiBase}/replay`
   };
 };

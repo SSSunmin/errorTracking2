@@ -10,6 +10,10 @@ export const issueParamsSchema = z.object({
   issueId: z.string().min(1)
 });
 
+export const eventSnapshotParamsSchema = issueParamsSchema.extend({
+  eventId: z.string().min(1)
+});
+
 export const listIssuesQuerySchema = z
   .object({
     status: issueStatusSchema.optional(),
@@ -75,7 +79,9 @@ export const eventDetailSchema = eventSummarySchema.extend({
   sdkName: z.string().nullable(),
   sdkVersion: z.string().nullable(),
   requestUrl: z.string().nullable(),
-  userAgent: z.string().nullable()
+  userAgent: z.string().nullable(),
+  hasSnapshot: z.boolean(),
+  hasReplay: z.boolean()
 });
 
 export const listIssuesResponseSchema = z.object({
@@ -92,6 +98,17 @@ export const issueDetailResponseSchema = z.object({
 export const issueEventsResponseSchema = z.object({
   events: z.array(eventDetailSchema),
   nextCursor: z.string().nullable()
+});
+
+export const eventSnapshotResponseSchema = z.object({
+  snapshot: z
+    .object({
+      data: z.unknown(),
+      href: z.string().nullable(),
+      width: z.number().int().nullable(),
+      height: z.number().int().nullable()
+    })
+    .nullable()
 });
 
 export const issueStatsResponseSchema = z.object({

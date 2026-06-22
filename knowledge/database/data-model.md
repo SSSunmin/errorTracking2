@@ -1,10 +1,10 @@
 ---
 type: Database Schema
 title: 데이터 모델 (Prisma / PostgreSQL)
-description: Mini-Sentry의 8개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
+description: Mini-Sentry의 10개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
 resource: packages/server/prisma/schema.prisma
-tags: [database, prisma, postgresql, schema]
-timestamp: 2026-06-16
+tags: [database, prisma, postgresql, schema, replay]
+timestamp: 2026-06-19
 ---
 
 # 데이터 모델
@@ -32,10 +32,27 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 제약: `@@unique([projectId, fingerprint])` / 인덱스: `@@index([projectId, status])`, `@@index([projectId, lastSeen])`
 
 ### Event — 개별 에러 발생 1건
-`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt`
-인덱스: `@@index([issueId, receivedAt])`, `@@index([projectId, receivedAt])`
+`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`
+관계: `snapshot EventSnapshot?`(back-relation, 0 또는 1개)
+인덱스: `@@index([issueId, receivedAt])`, `@@index([projectId, receivedAt])`, `@@index([clientEventId])`
+
+> `clientEventId`: SDK가 이벤트 전송 페이로드에 포함한 클라이언트 생성 UUID(`eventId` 필드). 세션 리플레이(feature C)와의 논리적 연결고리로 사용. `EventReplay`에 외래 키가 없으며, 리플레이가 이벤트보다 먼저 도착할 수 있어 DB 레벨 FK 대신 `clientEventId`로 join한다. 마이그레이션: `20260618083417_add_event_replay`.
 
 > `userAgent`(원문)와 `contexts.{browser,os,device}`는 인제스트 시 요청 User-Agent를 서버가 `ua-parser-js`로 파싱해 채운다([인제스트 파이프라인](/architecture/ingestion-pipeline.md)의 enrichment). SDK가 `contexts`를 직접 보내면 그 값이 우선한다.
+
+### EventSnapshot — 에러 발생 시점 DOM 스냅샷
+`id` · `eventId`(unique) → Event(onDelete: Cascade) · `projectId` · `data`(Json, rrweb-snapshot 직렬화 트리) · `href?` · `width?`(Int) · `height?`(Int) · `createdAt`
+인덱스: `@@index([projectId])`
+
+> Event와 1:1 관계(`eventId` unique). 마이그레이션: `20260618065758_add_event_snapshot`. 저장은 메인 트랜잭션 **바깥**에서 best-effort로 수행 — 스냅샷 저장 실패가 이벤트 자체를 롤백하지 않는다(`process.ts`). `data` 컬럼은 PostgreSQL `JSONB`. `EventSnapshot`은 `Project`에 대한 직접 FK가 **없으며** `projectId`는 비정규화 필드다(project-scope 쿼리 최적화용).
+
+### EventReplay — 세션 리플레이 녹화 데이터 (feature C)
+`id` · `clientEventId`(unique) · `projectId` · `data`(Bytes, gzip 압축 rrweb events JSON) · `eventCount?`(Int) · `durationMs?`(Int) · `sizeBytes?`(Int) · `createdAt`
+인덱스: `@@index([projectId])`
+
+> `Event`와 직접 FK 관계가 없다. `clientEventId`로 논리적 연결 — SDK가 에러 이벤트와 동일한 `eventId`(UUID)를 리플레이 업로드의 `?eventId=` 쿼리 파라미터로 전달한다. 리플레이가 이벤트 처리보다 먼저 도착할 수 있으므로 FK 대신 upsert(`clientEventId` unique)로 중복을 처리한다. `data`는 PostgreSQL `BYTEA`(Prisma Bytes). 서버는 gzip 바이트를 **그대로 저장**하고 읽을 때도 그대로 내려보낸다(재압축 없음). 마이그레이션: `20260618083417_add_event_replay`.
+
+> `projectId`는 비정규화 필드(project-scope 쿼리 최적화용). `Project`에 대한 직접 FK는 없다.
 
 ### AlertRule — 알림 규칙
 `id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `cooldownMinutes?`(Int?, regression 전용) · `isActive`(기본 true) · `createdAt` · `updatedAt`
@@ -60,4 +77,4 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 - `NotificationStatus`: pending · sent · failed
 
 ## 관련 개념
-- [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md)
+- [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md) · [이슈 API](/api/issues-api.md) · [인제스트 API](/api/ingest-api.md)

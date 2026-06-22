@@ -42,7 +42,18 @@ interface EventDetailDto extends EventSummaryDto {
   sdkVersion: string | null;
   requestUrl: string | null;
   userAgent: string | null;
+  hasSnapshot: boolean;
+  hasReplay: boolean;
 }
+
+interface EventSnapshotDto {
+  data: unknown;
+  href: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+type EventWithSnapshotFlag = Event & { snapshot: { id: string } | null };
 
 const toIssueListItem = (issue: Issue): IssueListItemDto => ({
   id: issue.id,
@@ -67,7 +78,10 @@ const toEventSummary = (event: Event): EventSummaryDto => ({
   receivedAt: event.receivedAt.toISOString()
 });
 
-const toEventDetail = (event: Event): EventDetailDto => ({
+const toEventDetail = (
+  event: EventWithSnapshotFlag,
+  replayClientEventIds: ReadonlySet<string>
+): EventDetailDto => ({
   ...toEventSummary(event),
   stacktrace: event.stacktrace,
   breadcrumbs: event.breadcrumbs,
@@ -77,7 +91,10 @@ const toEventDetail = (event: Event): EventDetailDto => ({
   sdkName: event.sdkName,
   sdkVersion: event.sdkVersion,
   requestUrl: event.requestUrl,
-  userAgent: event.userAgent
+  userAgent: event.userAgent,
+  hasSnapshot: event.snapshot != null,
+  hasReplay:
+    event.clientEventId != null && replayClientEventIds.has(event.clientEventId)
 });
 
 const ensureOwnedProject = async (
@@ -201,6 +218,7 @@ export const listIssueEvents = async (
       issueId,
       projectId
     },
+    include: { snapshot: { select: { id: true } } },
     orderBy: {
       receivedAt: "desc"
     },
@@ -217,10 +235,89 @@ export const listIssueEvents = async (
 
   const pageItems = events.slice(0, query.limit);
 
+  // Resolve hasReplay for the whole page in one query: which of the page's
+  // clientEventIds have a stored EventReplay. (Snapshot/B uses the included
+  // relation above; replays live in a separate table linked by clientEventId.)
+  const clientEventIds = pageItems
+    .map((event) => event.clientEventId)
+    .filter((id): id is string => id != null);
+  const replayClientEventIds = new Set<string>();
+  if (clientEventIds.length > 0) {
+    const replays = await prisma.eventReplay.findMany({
+      where: { clientEventId: { in: clientEventIds } },
+      select: { clientEventId: true }
+    });
+    for (const replay of replays) {
+      replayClientEventIds.add(replay.clientEventId);
+    }
+  }
+
   return {
-    events: pageItems.map(toEventDetail),
+    events: pageItems.map((event) => toEventDetail(event, replayClientEventIds)),
     nextCursor: events.length > query.limit ? (pageItems.at(-1)?.id ?? null) : null
   };
+};
+
+export const getEventSnapshot = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string,
+  eventId: string
+): Promise<{ snapshot: EventSnapshotDto | null }> => {
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  const snapshot = await prisma.eventSnapshot.findFirst({
+    where: {
+      eventId,
+      event: { issueId, projectId }
+    },
+    select: { data: true, href: true, width: true, height: true }
+  });
+
+  return {
+    snapshot: snapshot
+      ? {
+          data: snapshot.data,
+          href: snapshot.href,
+          width: snapshot.width,
+          height: snapshot.height
+        }
+      : null
+  };
+};
+
+export const getEventReplay = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string,
+  eventId: string
+): Promise<Buffer | null> => {
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  // Resolve the event (ownership already proven above) to get its client-side
+  // eventId, which is how replays are linked (no hard FK — a replay may arrive
+  // before async event processing has created the row).
+  const event = await prisma.event.findFirst({
+    where: { id: eventId, issueId, projectId },
+    select: { clientEventId: true }
+  });
+
+  if (!event?.clientEventId) {
+    return null;
+  }
+
+  const replay = await prisma.eventReplay.findUnique({
+    where: { clientEventId: event.clientEventId },
+    select: { data: true }
+  });
+
+  if (!replay) {
+    return null;
+  }
+
+  // The stored bytes are already gzip-compressed (the server never decompresses
+  // on store). Hand back the raw Buffer; the route sets content-encoding: gzip.
+  return Buffer.isBuffer(replay.data) ? replay.data : Buffer.from(replay.data);
 };
 
 export const getIssueStats = async (

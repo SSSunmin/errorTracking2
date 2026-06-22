@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: 브라우저 SDK
-description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음).'
+description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음). captureException 시 rrweb-snapshot으로 마스킹된 DOM 스냅샷 수집(captureReplay 기본 true). sessionReplay 옵션(기본 false)으로 rrweb 롤링 30초 버퍼 녹화 + fflate gzip 업로드 지원(feature C).'
 resource: packages/sdk/src/index.ts
-tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack]
-timestamp: 2026-06-17
+tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack, replay, snapshot, session-replay, rrweb, fflate]
+timestamp: 2026-06-19
 ---
 
 # 브라우저 SDK (`@mini-sentry/sdk`)
@@ -121,7 +121,7 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 형식: `<scheme>://<publicKey>@<host>[:port]/<projectId>`
 
 - 비밀번호 포함 시 즉시 오류 (실수로 시크릿 노출 방지)
-- 파싱 결과: `{ publicKey, projectId, ingestUrl: "<scheme>://<host>/api/<projectId>/store" }`
+- 파싱 결과: `{ publicKey, projectId, ingestUrl: "<scheme>://<host>/api/<projectId>/store", replayUrl: "<scheme>://<host>/api/<projectId>/replay" }`
 
 ## Client 클래스 (`packages/sdk/src/client.ts`)
 
@@ -199,6 +199,76 @@ V8/Chromium `Error.stack` 형식(`at fn (loc)` 또는 `at loc`) 파싱.
 | `safeStringify` | `JSON.stringify` + try/catch. 실패 시 `null` 반환 |
 | `truncate(str, max=1024)` | 문자열 truncation |
 
+## 세션 리플레이 (feature C) (`packages/sdk/src/sessionReplay.ts`, `src/client.ts`)
+
+`InitOptions.sessionReplay === true`이고 `document`가 존재할 때만 활성화되는 **opt-in** 기능.
+
+### 녹화 (`startSessionReplay`)
+
+- rrweb `record()` 호출로 DOM mutation을 스트림으로 수집.
+- `checkoutEveryNms: 15_000` — 15초마다 강제 full snapshot을 찍어 버퍼 trim 기준점을 갱신.
+- `maskAllInputs: true` — `<input>` 값을 마스킹(PII 보호). `recordCanvas: false`.
+- 매 이벤트마다 `trimReplayBuffer`로 **~30초 롤링 윈도** 유지:
+  - cutoff(`now - 30s`) 이전에서 가장 최근 full snapshot을 앵커로 삼아 그 이전 이벤트를 제거.
+  - full snapshot이 cutoff 이내에만 있으면(버퍼가 30초 미만) 가장 이른 full snapshot을 앵커로 사용 → 항상 full snapshot으로 시작하는 버퍼 보장.
+  - full snapshot이 전혀 없으면 이벤트 전부 유지.
+- `snapshot()` 호출 시 내부 배열 사본 반환.
+- 브라우저 환경이 아니거나 `record()` 실패 시 **inert handle** 반환(`snapshot()→[]`, `stop()→no-op`). 텔레메트리가 절대 호스트 앱에 throw하지 않는다.
+
+### 업로드 (`Client.sendReplay`, `Client.captureException`)
+
+`captureException` 호출 시 **250ms 딜레이(`REPLAY_FLUSH_DELAY_MS`)** 후 fire-and-forget으로 실행:
+
+```
+captureException() 호출
+ └─ 에러 이벤트 fetch POST → /api/:projectId/store
+ └─ setTimeout(250ms)
+      └─ sessionReplay.snapshot() → rrweb events[]
+      └─ fflate gzipSync(strToU8(JSON.stringify(events)))
+      └─ fetch POST /api/:projectId/replay
+           ?eventId=<eventId>&count=<events.length>
+           Content-Type: application/octet-stream
+           x-mini-sentry-key: <publicKey>
+```
+
+- 딜레이 이유: rrweb는 `MutationObserver` 기반이므로 에러 상태 렌더링(예: 에러 바운더리 폴백) 뮤테이션이 `captureException` 시점에 아직 버퍼에 없다. 250ms 대기로 최종 뮤테이션을 flush한다.
+- `replayUrl`은 `parseDsn`이 DSN에서 조립: `<scheme>://<host>/api/<projectId>/replay`.
+- 버퍼가 비어있으면(`events.length === 0`) 업로드하지 않는다.
+- gzip/fetch 실패는 완전히 삼킴 — 리플레이 업로드가 에러 이벤트 전송이나 호스트 앱을 중단시키지 않는다.
+
+### 알려진 한계 / 후속 과제
+
+- **Meta 이벤트 손실**: SDK trim이 leading Meta 이벤트(type 4, 뷰포트 크기 포함)를 버퍼에서 제거한다. 대시보드 `ReplayPlayer`가 첫 이벤트가 FullSnapshot(type 2)일 때 `1280×720` placeholder Meta를 합성해 보완한다. 실제 뷰포트가 달라도 synthesized size가 사용된다.
+- **보관 한도 없음**: `EventReplay`에 TTL/quota 정책이 없다. 리플레이가 누적되면 스토리지를 무제한으로 차지한다(추후 과제).
+- **보안**: 리플레이 뷰가 대시보드와 같은 오리진에서 렌더링된다(`allow-same-origin`). 신뢰할 수 없는 녹화는 별도 오리진에서 서빙해야 한다(현재 미구현).
+- **captureMessage 미지원**: 세션 리플레이 업로드는 `captureException`에서만 실행된다.
+
+## DOM 스냅샷 캡처 (`packages/sdk/src/replay.ts`)
+
+에러 발생 시점의 페이지 모양을 rrweb-snapshot으로 캡처한다. `captureException`에서만 호출되며(`captureMessage`는 해당 없음), `captureReplay !== false`일 때 활성화된다.
+
+### 동작
+
+```ts
+snapshot(document, { maskAllInputs: true, inlineStylesheet: true })
+```
+
+- **`maskAllInputs: true`**: `<input>` 값을 마스킹 처리해 PII 노출 방지.
+- **`inlineStylesheet: true`**: 외부 CSS를 인라인으로 포함해 재현 시 스타일이 올바르게 표시됨.
+- `location.href`, `window.innerWidth`, `window.innerHeight`를 함께 첨부한다.
+- `document`가 없는 환경(SSR 등) 또는 `snapshot()` 실패 시 `undefined`를 반환 — 이벤트는 스냅샷 없이 정상 전송된다.
+- 캡처 결과는 `SentryEvent.replay` 필드에 첨부되어 인제스트 페이로드에 포함된다.
+
+### 의존성
+
+`rrweb-snapshot: "2.0.1"` (`packages/sdk/package.json`의 `dependencies`).
+
+### 알려진 한계
+
+- `maskAllInputs`는 `<textarea>` 및 `contenteditable` 요소를 마스킹하지 않는다.
+- 캡처된 스냅샷(최대 ~1MB)은 BullMQ 잡 데이터로 Redis에 적재된다 — 스냅샷이 많으면 Redis 메모리 사용량이 늘어난다.
+- `captureReplay`가 기본 `true`이므로 opt-out하지 않으면 모든 `captureException` 호출에서 스냅샷을 시도한다.
+
 ## InitOptions
 
 | 옵션 | 타입 | 기본값 | 설명 |
@@ -209,8 +279,12 @@ V8/Chromium `Error.stack` 형식(`at fn (loc)` 또는 `at loc`) 파싱.
 | `maxBreadcrumbs` | number | 50 | breadcrumb 버퍼 크기 |
 | `autoInstrument` | boolean | true | 전역 핸들러 + breadcrumb 계측 자동 설치 |
 | `captureConsole` | boolean | false | console 브레드크럼 수집 여부. 기본 비활성. `true`로 설정해야 console.log/info/warn/error를 breadcrumb으로 수집 |
+| `captureReplay` | boolean | true | `captureException` 호출 시 rrweb-snapshot으로 DOM 스냅샷 캡처(feature B). 기본 **활성**. 비활성하려면 `false`로 명시 |
+| `sessionReplay` | boolean | false | rrweb 롤링 30초 버퍼 녹화 + 에러 시 fflate gzip 업로드(feature C). **기본 비활성** — rrweb 로드 비용이 있으므로 opt-in. `true`이고 `document`가 있을 때만 시작 |
 
 ## 관련 개념
 - [인제스트 API](/api/ingest-api.md)
 - [인제스트 파이프라인](/architecture/ingestion-pipeline.md)
+- [이슈 API](/api/issues-api.md)
+- [데이터 모델](/database/data-model.md)
 - [용어집](/glossary/terms.md)

@@ -23,6 +23,8 @@ beforeEach(async () => {
     TRUNCATE TABLE
       "Notification",
       "AlertRule",
+      "EventReplay",
+      "EventSnapshot",
       "Event",
       "Issue",
       "ProjectKey",

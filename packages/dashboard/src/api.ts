@@ -76,6 +76,24 @@ export interface EventDetail extends EventSummary {
   sdkVersion: string | null;
   requestUrl: string | null;
   userAgent: string | null;
+  hasSnapshot: boolean;
+  hasReplay: boolean;
+}
+
+export interface EventSnapshot {
+  data: unknown;
+  href: string | null;
+  width: number | null;
+  height: number | null;
+}
+
+/** A single rrweb event (rrweb's `eventWithTime`). Kept structural here so the
+ *  API layer needn't depend on rrweb types; the player narrows it on use. */
+export interface ReplayEvent {
+  type: number;
+  data: unknown;
+  timestamp: number;
+  [key: string]: unknown;
 }
 
 export interface IssueDetail extends IssueListItem {
@@ -255,6 +273,33 @@ export const api = {
     window: "24h" | "7d"
   ): Promise<{ buckets: StatBucket[] }> =>
     request(`/api/projects/${projectId}/issues/${issueId}/stats?window=${window}`),
+  getEventSnapshot: (
+    projectId: string,
+    issueId: string,
+    eventId: string
+  ): Promise<{ snapshot: EventSnapshot | null }> =>
+    request(
+      `/api/projects/${projectId}/issues/${issueId}/events/${eventId}/snapshot`
+    ),
+  // The replay endpoint returns gzip-encoded JSON (the events array); fetch
+  // transparently decompresses, so request() yields the array directly. A 404
+  // (no stored replay) maps to null rather than an error.
+  getEventReplay: async (
+    projectId: string,
+    issueId: string,
+    eventId: string
+  ): Promise<ReplayEvent[] | null> => {
+    try {
+      return await request<ReplayEvent[]>(
+        `/api/projects/${projectId}/issues/${issueId}/events/${eventId}/replay`
+      );
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 404 || error.status === 204)) {
+        return null;
+      }
+      throw error;
+    }
+  },
   setIssueStatus: (
     projectId: string,
     issueId: string,
