@@ -146,6 +146,7 @@ model EventSnapshot {
   createdAt DateTime @default(now())
 
   @@index([projectId])
+  @@index([createdAt])
 }
 
 model EventReplay {
@@ -159,6 +160,7 @@ model EventReplay {
   createdAt     DateTime @default(now())
 
   @@index([projectId])
+  @@index([createdAt])
 }
 
 model SourceMap {

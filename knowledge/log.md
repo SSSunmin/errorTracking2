@@ -2,6 +2,15 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-22 (P0 retention 구현 — feat/retention-pruning)
+- **개념 신규(`ops/retention`)**: 데이터 보존/정리 메커니즘 문서화. env 6종(`RETENTION_ENABLED`/`_REPLAY_DAYS`/`_SNAPSHOT_DAYS`/`_EVENT_DAYS`/`_BATCH_SIZE`/`_CRON`), 삭제 순서(EventReplay 독립→EventSnapshot→Event cascade)와 근거(EventReplay는 Event와 FK 없음·`days<=0` 비활성·배치 삭제로 lock 회피), BullMQ retention 큐 + `upsertJobScheduler` 멱등 스케줄 + concurrency 1 Worker, 인덱스 마이그레이션, 알려진 한계(autovacuum 디스크 회수·대규모 EXPLAIN 미검증·스케줄 실패 로그만) 명시.
+- **DB**: `EventReplay`·`EventSnapshot`에 `@@index([createdAt])` 추가(마이그레이션 `20260622063456_add_retention_indexes`). `Event`는 기존 `[projectId, receivedAt]`로 커버.
+- **코드**: `config/env.ts`(RETENTION_* Zod), `lib/queue.ts`(retention 큐·`scheduleRetentionJob`·`closeRetentionQueue`), `modules/retention/prune.ts` 신규(배치 삭제), `worker.ts`(retention Worker+부트스트랩 스케줄). `app.ts` onClose는 retention 큐 미소유라 닫지 않음.
+- **테스트**: `tests/retention.test.ts` 신규 7개(cutoff 경계·비활성·차등 보존·배치 경계 2종·고아 replay 독립삭제·Event cascade). typecheck·lint·전체 테스트 그린.
+
+## 2026-06-22 (P0 retention 확정 계획 기록)
+- **백로그(`roadmap/backlog`)**: P0 데이터 보존/정리 항목에 "확정 계획(2026-06-22)" 절 추가. 확정 결정(보존기간 replay14/snapshot14/event90/sourcemap0, env 전역만, 소스맵 제외, `z.stringbool()`, 일반 `CREATE INDEX`), 핵심 코드 사실(Event→Snapshot cascade / Event↔Replay FK 없음 → 고아 독립삭제 필수 / createdAt 인덱스 부재 / BullMQ 단일 큐·repeatable 없음), 7단계 구현 계획, 위험 명시. impl-planner 코드 근거 검토 결과 반영. 구현 착수.
+
 ## 2026-06-22 (백로그 문서 추가)
 - **로드맵 신규**: `roadmap/backlog` 생성. Phase 1~8 + 소스맵 이후 잔여 작업을 중요도순(P0 데이터 보존/정리 → P1 리플레이 보안 하드닝 → P2 소스맵 정확도/운영 → P3 제품 기능 확장 + 소 DX/테스트)으로 정렬, 각 항목 근거(코드/문서 참조)·범위 스케치·의존성 명시. `roadmap/roadmap`에 "잔여 작업" 절 추가해 백로그 링크. `index.md` 개요에 백로그 항목 추가.
 

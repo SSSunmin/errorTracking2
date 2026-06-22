@@ -29,6 +29,14 @@ timestamp: 2026-06-16
 | `SMTP_HOST` / `SMTP_PORT` | - | host / 포트 | 이메일 알림 SMTP 서버 |
 | `SMTP_USER` / `SMTP_PASSWORD` | - | 자격증명 | SMTP 인증 |
 | `SMTP_FROM` | - | 보내는 주소 | 이메일 From (SMTP 설정 시 필수) |
+| `RETENTION_ENABLED` | - | 기본 true (`z.stringbool`) | 주기 정리 잡 등록 여부 |
+| `RETENTION_REPLAY_DAYS` | - | 기본 14, `0`=비활성 | `EventReplay` 보존기간(일) |
+| `RETENTION_SNAPSHOT_DAYS` | - | 기본 14, `0`=비활성 | `EventSnapshot` 보존기간(일) |
+| `RETENTION_EVENT_DAYS` | - | 기본 90, `0`=비활성 | `Event` 보존기간(일) |
+| `RETENTION_BATCH_SIZE` | - | 기본 1000 | 정리 배치당 최대 삭제 행 수 |
+| `RETENTION_CRON` | - | 기본 `"0 3 * * *"` | 정리 잡 cron(매일 03:00) |
+
+> 보존/정리 잡 동작·삭제 순서·인덱스는 [데이터 보존/정리](/ops/retention.md) 참고. `0`은 "해당 대상 비활성"이며 전량 삭제가 아니다.
 
 > 4개 SMTP 자격증명(HOST·PORT·USER·PASSWORD)이 모두 있어야 실제 SMTP 전송. 미설정 시 Nodemailer `jsonTransport`로 폴백(개발: 페이로드 로그만). **Slack 알림 대상은 환경변수가 아니라 AlertRule의 `target`(hooks.slack.com URL)** 으로 지정한다. [알림 규칙 API](/api/alerts-api.md) 참고.
 

@@ -33,7 +33,16 @@ const envSchema = z.object({
   SMTP_PORT: z.coerce.number().int().positive().max(65535).optional(),
   SMTP_USER: z.string().optional(),
   SMTP_PASSWORD: z.string().optional(),
-  SMTP_FROM: z.email().default("no-reply@mini-sentry.local")
+  SMTP_FROM: z.email().default("no-reply@mini-sentry.local"),
+  // ── Retention / pruning (P0) ──────────────────────────────────────────────
+  // 주기 정리 잡 활성 여부. 대상별 보존기간(일). 0이면 해당 대상은 정리하지 않음.
+  RETENTION_ENABLED: z.stringbool().default(true),
+  RETENTION_REPLAY_DAYS: z.coerce.number().int().min(0).default(14),
+  RETENTION_SNAPSHOT_DAYS: z.coerce.number().int().min(0).default(14),
+  RETENTION_EVENT_DAYS: z.coerce.number().int().min(0).default(90),
+  RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(100_000).default(1_000),
+  // BullMQ repeatable job cron 패턴(기본: 매일 03:00).
+  RETENTION_CRON: z.string().min(1).default("0 3 * * *")
 });
 
 const parsedEnv = envSchema.parse({

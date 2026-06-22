@@ -64,3 +64,52 @@ export const closeIngestQueue = async (): Promise<void> => {
   await queueInstance.disconnect();
   queueInstance = undefined;
 };
+
+// ── Retention / pruning queue (P0) ────────────────────────────────────────────
+
+export const retentionQueueName = "retention";
+
+/** Job name + stable scheduler id (idempotent upsert across worker restarts). */
+export const retentionJobName = "prune";
+export const retentionSchedulerId = "retention-prune";
+
+let retentionQueueInstance: Queue | undefined;
+
+export const getRetentionQueue = (): Queue => {
+  retentionQueueInstance ??= new Queue(retentionQueueName, {
+    connection: createRedisConnection(),
+    defaultJobOptions: {
+      removeOnComplete: { count: 100 },
+      removeOnFail: { count: 100 }
+    }
+  });
+
+  return retentionQueueInstance;
+};
+
+/**
+ * Register (or update) the repeatable retention job using a stable scheduler id,
+ * so restarting the worker does not accumulate duplicate repeatable jobs.
+ * No-op when retention is disabled.
+ */
+export const scheduleRetentionJob = async (): Promise<void> => {
+  if (!env.RETENTION_ENABLED) {
+    return;
+  }
+
+  await getRetentionQueue().upsertJobScheduler(
+    retentionSchedulerId,
+    { pattern: env.RETENTION_CRON },
+    { name: retentionJobName }
+  );
+};
+
+export const closeRetentionQueue = async (): Promise<void> => {
+  if (!retentionQueueInstance) {
+    return;
+  }
+
+  await retentionQueueInstance.close();
+  await retentionQueueInstance.disconnect();
+  retentionQueueInstance = undefined;
+};
