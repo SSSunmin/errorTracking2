@@ -10,6 +10,7 @@
 - [Mini-Sentry 프로젝트 개요](/overview/mini-sentry.md) — 무엇을·왜·아키텍처 흐름·현재 단계
 - [용어집](/glossary/terms.md) — Issue/Event/fingerprint/DSN 등 도메인 용어
 - [로드맵](/roadmap/roadmap.md) — Phase 1 완료 / 이후 단계
+- [백로그 / 우선순위](/roadmap/backlog.md) — 잔여 작업 P0~P3 정렬·근거·범위(retention·보안·소스맵·기능)
 
 ### 아키텍처
 - [시스템 아키텍처](/architecture/system.md) — 모노레포·부팅·미들웨어·전체 파이프라인

@@ -27,5 +27,8 @@ timestamp: 2026-06-22
 - 멀티 조직 / 팀
 - 시계열 DB 샤딩
 
+## 잔여 작업
+- 우선순위·근거·범위는 [백로그 / 우선순위](/roadmap/backlog.md) 참고 (P0 retention → P1 리플레이 보안 → P2 소스맵 정확도 → P3 제품 기능).
+
 ## 관련 개념
-- [프로젝트 개요](/overview/mini-sentry.md) · [시스템 아키텍처](/architecture/system.md)
+- [프로젝트 개요](/overview/mini-sentry.md) · [시스템 아키텍처](/architecture/system.md) · [백로그](/roadmap/backlog.md)

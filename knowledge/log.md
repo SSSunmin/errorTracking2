@@ -2,6 +2,9 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-22 (백로그 문서 추가)
+- **로드맵 신규**: `roadmap/backlog` 생성. Phase 1~8 + 소스맵 이후 잔여 작업을 중요도순(P0 데이터 보존/정리 → P1 리플레이 보안 하드닝 → P2 소스맵 정확도/운영 → P3 제품 기능 확장 + 소 DX/테스트)으로 정렬, 각 항목 근거(코드/문서 참조)·범위 스케치·의존성 명시. `roadmap/roadmap`에 "잔여 작업" 절 추가해 백로그 링크. `index.md` 개요에 백로그 항목 추가.
+
 ## 2026-06-22 (소스맵 심볼리케이션 기능 추가)
 - **API 신규**: `api/sourcemaps-api` 생성. 업로드(`POST /api/projects/:id/releases/:release/sourcemaps` — JWT 인증, `application/octet-stream`, 20 MiB 상한, `?filename=`, gzip 압축 upsert, 업로드 시 `Event.symbolicated` 캐시 무효화 `updateMany`, 201 응답)와 목록 조회(`GET` 동일 경로) 상세 기술. 업로드 CLI(`scripts/upload-sourcemaps.mjs` — `*.map` 재귀 스캔, `MINI_SENTRY_TOKEN` env 또는 `--token`). 알려진 한계 4종(basename 충돌·전량 메모리 로드·업로드 시 mass write·읽기 시 쓰기 중복) 명시.
 - **DB**: `database/data-model`(SourceMap 모델 절 신규, Event.symbolicated 필드 추가, Project 관계에 `sourceMaps[]` 추가, 모델 수 10→11, 마이그레이션 2건 명시), `database/erd`(SourceMap 엔티티+`Project ||--o{ SourceMap` 관계 추가, Event에 `symbolicated` 필드 추가, 엔티티/관계 설명 표 갱신, 표기/주의 절에 SourceMap 관련 주의사항 추가).
