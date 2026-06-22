@@ -1,10 +1,10 @@
 ---
 type: Database Schema
 title: 데이터 모델 (Prisma / PostgreSQL)
-description: Mini-Sentry의 10개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
+description: Mini-Sentry의 11개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
 resource: packages/server/prisma/schema.prisma
-tags: [database, prisma, postgresql, schema, replay]
-timestamp: 2026-06-19
+tags: [database, prisma, postgresql, schema, replay, sourcemap, symbolication]
+timestamp: 2026-06-22
 ---
 
 # 데이터 모델
@@ -21,7 +21,7 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 
 ### Project — 모니터링 대상 프로젝트
 `id` · `name` · `slug`(unique) · `platform`(기본 `javascript-browser`) · `ownerId` → User(onDelete: Cascade) · `createdAt` · `updatedAt`
-관계: `keys[]`, `issues[]`, `events[]`, `alertRules[]` / 인덱스: `@@index([ownerId])`
+관계: `keys[]`, `issues[]`, `events[]`, `alertRules[]`, `sourceMaps[]` / 인덱스: `@@index([ownerId])`
 
 ### ProjectKey — 인제스트용 공개키(DSN의 기반)
 `id` · `projectId` → Project(Cascade) · `publicKey`(unique) · `label?` · `isActive`(기본 true) · `lastUsedAt?` · `createdAt`
@@ -32,9 +32,11 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 제약: `@@unique([projectId, fingerprint])` / 인덱스: `@@index([projectId, status])`, `@@index([projectId, lastSeen])`
 
 ### Event — 개별 에러 발생 1건
-`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`
+`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `symbolicated?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`
 관계: `snapshot EventSnapshot?`(back-relation, 0 또는 1개)
 인덱스: `@@index([issueId, receivedAt])`, `@@index([projectId, receivedAt])`, `@@index([clientEventId])`
+
+> `symbolicated`: 소스맵 심볼리케이션 결과 캐시(`Json?`, JSONB). 이벤트 조회 시 lazy 심볼리케이션 후 `{ frames: [...] }` 형태로 채운다. 소스맵 재업로드 시 해당 릴리스 이벤트 전체에 `updateMany`로 `null` 무효화된다. 마이그레이션: `20260622000000_add_source_map`.
 
 > `clientEventId`: SDK가 이벤트 전송 페이로드에 포함한 클라이언트 생성 UUID(`eventId` 필드). 세션 리플레이(feature C)와의 논리적 연결고리로 사용. `EventReplay`에 외래 키가 없으며, 리플레이가 이벤트보다 먼저 도착할 수 있어 DB 레벨 FK 대신 `clientEventId`로 join한다. 마이그레이션: `20260618083417_add_event_replay`.
 
@@ -53,6 +55,12 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 > `Event`와 직접 FK 관계가 없다. `clientEventId`로 논리적 연결 — SDK가 에러 이벤트와 동일한 `eventId`(UUID)를 리플레이 업로드의 `?eventId=` 쿼리 파라미터로 전달한다. 리플레이가 이벤트 처리보다 먼저 도착할 수 있으므로 FK 대신 upsert(`clientEventId` unique)로 중복을 처리한다. `data`는 PostgreSQL `BYTEA`(Prisma Bytes). 서버는 gzip 바이트를 **그대로 저장**하고 읽을 때도 그대로 내려보낸다(재압축 없음). 마이그레이션: `20260618083417_add_event_replay`.
 
 > `projectId`는 비정규화 필드(project-scope 쿼리 최적화용). `Project`에 대한 직접 FK는 없다.
+
+### SourceMap — 소스맵 (심볼리케이션용)
+`id` · `projectId` → Project(Cascade) · `release` · `filename`(미니파이 artifact basename) · `data`(Bytes, gzip된 소스맵 JSON) · `sizeBytes?`(Int) · `createdAt` · `updatedAt`
+제약: `@@unique([projectId, release, filename])` / 인덱스: `@@index([projectId, release])`
+
+> `filename`은 업로드 시 `frameBasename()`이 추출한 basename 값이다(URL/경로/쿼리·해시 제거 후 basename). 스택 프레임의 filename basename과 매칭 키로 사용된다. `data`는 PostgreSQL `BYTEA`(Prisma Bytes). 업로드 시 서버가 비동기 gzip 압축해 저장. 조회 시 gunzip해 메모리에서 사용. 마이그레이션: `20260622000000_add_source_map`(모델·인덱스·Event.symbolicated 컬럼), `20260622000100_source_map_project_fk`(Project FK + Cascade).
 
 ### AlertRule — 알림 규칙
 `id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `cooldownMinutes?`(Int?, regression 전용) · `isActive`(기본 true) · `createdAt` · `updatedAt`
@@ -77,4 +85,4 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 - `NotificationStatus`: pending · sent · failed
 
 ## 관련 개념
-- [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md) · [이슈 API](/api/issues-api.md) · [인제스트 API](/api/ingest-api.md)
+- [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md) · [이슈 API](/api/issues-api.md) · [인제스트 API](/api/ingest-api.md) · [소스맵 API](/api/sourcemaps-api.md)

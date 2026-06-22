@@ -2,6 +2,7 @@ import { Prisma, type Event, type Issue, type IssueStatus } from "@prisma/client
 
 import { notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
+import { symbolicateEvents } from "../sourcemaps/service.js";
 import type {
   IssueStatsQuery,
   ListEventsQuery,
@@ -55,6 +56,59 @@ interface EventSnapshotDto {
 
 type EventWithSnapshotFlag = Event & { snapshot: { id: string } | null };
 
+// Resolve the stacktrace to expose per event: a cached symbolicated stacktrace
+// when present, otherwise lazily symbolicate against the release's source maps
+// (caching the result), falling back to the raw stored stacktrace.
+const resolveStacktraces = async (
+  events: readonly EventWithSnapshotFlag[]
+): Promise<Map<string, unknown>> => {
+  const resolved = new Map<string, unknown>();
+  const uncached: EventWithSnapshotFlag[] = [];
+
+  for (const event of events) {
+    if (event.symbolicated != null) {
+      resolved.set(event.id, event.symbolicated);
+    } else {
+      resolved.set(event.id, event.stacktrace);
+      uncached.push(event);
+    }
+  }
+
+  if (uncached.length === 0) {
+    return resolved;
+  }
+
+  const outcomes = await symbolicateEvents(
+    uncached.map((event) => ({
+      id: event.id,
+      projectId: event.projectId,
+      release: event.release,
+      stacktrace: event.stacktrace
+    }))
+  );
+
+  const cacheWrites: Promise<unknown>[] = [];
+  for (const [eventId, outcome] of outcomes) {
+    if (!outcome.changed) {
+      continue;
+    }
+    const stacktrace = { frames: outcome.frames };
+    resolved.set(eventId, stacktrace);
+    // Cache-fill on read so later detail views skip re-decoding source maps.
+    cacheWrites.push(
+      prisma.event
+        .update({
+          where: { id: eventId },
+          data: { symbolicated: stacktrace as unknown as Prisma.InputJsonValue }
+        })
+        .catch(() => undefined)
+    );
+  }
+  await Promise.allSettled(cacheWrites);
+
+  return resolved;
+};
+
 const toIssueListItem = (issue: Issue): IssueListItemDto => ({
   id: issue.id,
   title: issue.title,
@@ -80,10 +134,11 @@ const toEventSummary = (event: Event): EventSummaryDto => ({
 
 const toEventDetail = (
   event: EventWithSnapshotFlag,
-  replayClientEventIds: ReadonlySet<string>
+  replayClientEventIds: ReadonlySet<string>,
+  stacktrace: unknown
 ): EventDetailDto => ({
   ...toEventSummary(event),
-  stacktrace: event.stacktrace,
+  stacktrace,
   breadcrumbs: event.breadcrumbs,
   tags: event.tags,
   userContext: event.userContext,
@@ -252,8 +307,16 @@ export const listIssueEvents = async (
     }
   }
 
+  const resolvedStacktraces = await resolveStacktraces(pageItems);
+
   return {
-    events: pageItems.map((event) => toEventDetail(event, replayClientEventIds)),
+    events: pageItems.map((event) =>
+      toEventDetail(
+        event,
+        replayClientEventIds,
+        resolvedStacktraces.get(event.id) ?? event.stacktrace
+      )
+    ),
     nextCursor: events.length > query.limit ? (pageItems.at(-1)?.id ?? null) : null
   };
 };

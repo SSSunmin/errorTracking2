@@ -14,7 +14,18 @@ interface Frame {
   lineno?: number;
   colno?: number;
   in_app?: boolean;
+  originalFunction?: string;
+  originalFilename?: string;
+  originalLineno?: number;
+  originalColno?: number;
+  contextLine?: string;
 }
+
+const formatLocation = (
+  filename: string | undefined,
+  lineno: number | undefined
+): string =>
+  `${filename ?? "?"}${lineno !== undefined ? `:${String(lineno)}` : ""}`;
 
 const getFrames = (stacktrace: unknown): Frame[] => {
   if (
@@ -513,15 +524,33 @@ export const IssueDetailPage = (): ReactNode => {
         <section className="card">
           <h3>스택트레이스</h3>
           <ul className="frames">
-            {frames.map((frame, index) => (
-              <li key={index} className={frame.in_app ? "in-app" : "vendor"}>
-                <span className="fn">{frame.function ?? "<anonymous>"}</span>
-                <span className="muted small">
-                  {frame.filename ?? "?"}
-                  {frame.lineno !== undefined ? `:${String(frame.lineno)}` : ""}
-                </span>
-              </li>
-            ))}
+            {frames.map((frame, index) => {
+              const symbolicated = frame.originalFilename !== undefined;
+              const fn =
+                (symbolicated ? frame.originalFunction : undefined) ??
+                frame.function ??
+                "<anonymous>";
+              return (
+                <li key={index} className={frame.in_app ? "in-app" : "vendor"}>
+                  <div className="frame-main">
+                    <span className="fn">{fn}</span>
+                    <span className="muted small">
+                      {symbolicated
+                        ? formatLocation(frame.originalFilename, frame.originalLineno)
+                        : formatLocation(frame.filename, frame.lineno)}
+                    </span>
+                  </div>
+                  {frame.contextLine !== undefined && frame.contextLine !== "" && (
+                    <code className="frame-context small">{frame.contextLine}</code>
+                  )}
+                  {symbolicated && (
+                    <span className="muted small frame-minified">
+                      ↳ {formatLocation(frame.filename, frame.lineno)}
+                    </span>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         </section>
       )}

@@ -62,6 +62,7 @@ model Project {
   issues     Issue[]
   events     Event[]
   alertRules AlertRule[]
+  sourceMaps SourceMap[]
 
   @@index([ownerId])
 }
@@ -111,6 +112,7 @@ model Event {
   exceptionType  String?
   exceptionValue String?
   stacktrace     Json?
+  symbolicated   Json?
   breadcrumbs    Json?
   tags           Json?
   userContext    Json?
@@ -157,6 +159,21 @@ model EventReplay {
   createdAt     DateTime @default(now())
 
   @@index([projectId])
+}
+
+model SourceMap {
+  id        String   @id @default(cuid())
+  projectId String
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  release   String
+  filename  String
+  data      Bytes
+  sizeBytes Int?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([projectId, release, filename])
+  @@index([projectId, release])
 }
 
 model AlertRule {

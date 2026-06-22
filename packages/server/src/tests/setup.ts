@@ -25,6 +25,7 @@ beforeEach(async () => {
       "AlertRule",
       "EventReplay",
       "EventSnapshot",
+      "SourceMap",
       "Event",
       "Issue",
       "ProjectKey",
