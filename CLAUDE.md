@@ -12,8 +12,15 @@
 
 ## 쓸 수 있는 도구
 
-**슬래시 커맨드**: `/plan` · `/review` · `/verify` · `/okf` · `/ultraqa`
-**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `debugger` · `architect` · `knowledge-curator` · `qa-tester`
+**슬래시 커맨드**: `/plan` · `/review` · `/test` · `/verify` · `/okf` · `/ultraqa`
+**서브에이전트(Task로 위임)**: `analyst` · `product-planner` · `impl-planner` · `code-reviewer` · `test-writer` · `debugger` · `architect` · `knowledge-curator` · `qa-tester`
+
+- **(상시) 로직 변경 시 테스트 제안**: 함수·검증·변환 등 분기 있는 로직을 추가/수정하면 → `/test`(`test-writer`)로 **테스트 작성·실행을 제안**(승인 시 진행, 기존 Vitest 관례 준수). 가짜 커버리지 금지.
+
+## Git / 커밋
+
+- **`Co-Authored-By: Claude` 또는 Claude 관련 서명 절대 추가 금지.** 커밋 메시지는 제목과 본문(선택)만. (전역 `~/.claude/settings.json`의 `attribution`이 자동 trailer를 끔.)
+- 작업 완료 후 임의로 커밋하지 않는다 — **사용자가 명시적으로 요청한 경우에만** 커밋한다.
 
 ## 지식 문서(OKF)
 
