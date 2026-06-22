@@ -2,7 +2,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import { createCache, Mirror, rebuildIntoSandboxedIframe } from "rrweb-snapshot";
-import { EventType, Replayer } from "rrweb";
+import { EventType, Replayer, ReplayerEvents } from "rrweb";
 import "rrweb/dist/style.css";
 
 import { api, type EventSnapshot, type IssueStatus, type ReplayEvent } from "../api";
@@ -224,13 +224,19 @@ const SnapshotSection = ({
 };
 
 /** Plays a recorded rrweb session with rrweb's Replayer, mounted imperatively
- *  into a container ref and CSS-scaled to fit the card. Construction is
- *  try/catch wrapped so a malformed recording degrades to a muted line instead
- *  of breaking the page; teardown pauses the player and clears the container. */
+ *  into a container ref and CSS-scaled to fit the card. Playback does NOT start
+ *  automatically: the Replayer renders the first frame on construction and waits
+ *  for the user to press play; when playback finishes a "replay from start"
+ *  control appears. Construction is try/catch wrapped so a malformed recording
+ *  degrades to a muted line instead of breaking the page; teardown pauses the
+ *  player and clears the container. */
+type ReplayStatus = "idle" | "playing" | "paused" | "finished";
+
 const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
   const containerRef = useRef<HTMLDivElement>(null);
   const replayerRef = useRef<Replayer | null>(null);
   const [failed, setFailed] = useState(false);
+  const [status, setStatus] = useState<ReplayStatus>("idle");
 
   useEffect(() => {
     const container = containerRef.current;
@@ -238,6 +244,7 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
       return;
     }
     setFailed(false);
+    setStatus("idle");
     container.replaceChildren();
 
     // Newer recordings include the real Meta event, which carries the recorded
@@ -283,24 +290,55 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
       // UNSAFE_replayCanvas (it adds allow-scripts → captured DOM could run in
       // the dashboard origin → stored XSS); for untrusted recordings in
       // production, serve the replay view from a separate origin.
+      // skipInactive fast-forwards through idle gaps. rrweb records nothing while
+      // the page is idle, so a recording that spans a long pause (user loads the
+      // page, walks away, comes back) stores a multi-minute gap between the first
+      // snapshot and the next activity. Without this the player renders the first
+      // frame and then sits in real time waiting out the gap, which looks frozen.
       replayer = new Replayer(
         playerEvents as unknown as ConstructorParameters<typeof Replayer>[0],
-        { root: container, mouseTail: false, speed: 1 }
+        { root: container, mouseTail: false, speed: 1, skipInactive: true }
       );
       replayerRef.current = replayer;
-      replayer.play();
-      // Fit the recorded viewport to the card width.
-      // Re-apply on resize so a 0-width first paint can't lock a wrong scale.
+      // Don't auto-play: construction already paints the first frame, so we leave
+      // the player paused at the start and let the user press play. Surface the
+      // end of playback so the UI can offer a "replay from start" control.
+      replayer.on(ReplayerEvents.Finish, () => {
+        setStatus("finished");
+      });
+      // Fit the recorded viewport to the card width by CSS-scaling the wrapper.
+      // The recorded viewport can change mid-replay (window resize, or a first
+      // snapshot with no Meta that rrweb later resizes), and rrweb resizes the
+      // iframe on each Meta/ViewportResize event. Scaling by a single fixed width
+      // would then mismatch the live iframe size, so the replayed cursor — laid
+      // out in current-viewport pixels inside the wrapper — drifts on the
+      // segments whose size differs. Track the current dimensions from rrweb's
+      // Resize event and re-fit, so the scale always matches the live iframe.
+      let viewW = viewportWidth;
+      let viewH = viewportHeight;
       const fit = (): void => {
         const wrapper = container.querySelector<HTMLElement>(".replayer-wrapper");
         if (!wrapper || container.clientWidth === 0) {
           return;
         }
-        const scale = container.clientWidth / viewportWidth;
+        const scale = container.clientWidth / viewW;
         wrapper.style.transformOrigin = "top left";
         wrapper.style.transform = `scale(${String(scale)})`;
-        container.style.height = `${String(Math.round(viewportHeight * scale))}px`;
+        container.style.height = `${String(Math.round(viewH * scale))}px`;
       };
+      // rrweb emits Resize for the initial Meta and every viewport change during
+      // playback; mirror those dimensions so the scale stays aligned to the
+      // cursor's coordinate space.
+      replayer.on(ReplayerEvents.Resize, (payload: unknown) => {
+        const dimension = asRecord(payload);
+        if (typeof dimension.width === "number" && dimension.width > 0) {
+          viewW = dimension.width;
+        }
+        if (typeof dimension.height === "number" && dimension.height > 0) {
+          viewH = dimension.height;
+        }
+        fit();
+      });
       fit();
       observer = new ResizeObserver(fit);
       observer.observe(container);
@@ -324,21 +362,57 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
     };
   }, [events]);
 
+  const playFromStart = (): void => {
+    try {
+      replayerRef.current?.play(0);
+      setStatus("playing");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const pause = (): void => {
+    try {
+      replayerRef.current?.pause();
+      setStatus("paused");
+    } catch {
+      /* ignore */
+    }
+  };
+
+  const resume = (): void => {
+    try {
+      const replayer = replayerRef.current;
+      if (replayer) {
+        // Resume from where we paused rather than restarting at 0.
+        replayer.play(replayer.getCurrentTime());
+        setStatus("playing");
+      }
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <>
       <div ref={containerRef} className="replay-player" />
-      {!failed && (
-        <button
-          type="button"
-          className="ghost small replay-restart"
-          onClick={() => {
-            try {
-              replayerRef.current?.play(0);
-            } catch {
-              /* ignore */
-            }
-          }}
-        >
+      {!failed && status === "idle" && (
+        <button type="button" className="ghost small replay-restart" onClick={playFromStart}>
+          ▶ 재생
+        </button>
+      )}
+      {!failed && status === "playing" && (
+        <button type="button" className="ghost small replay-restart" onClick={pause}>
+          ⏸ 일시정지
+        </button>
+      )}
+      {!failed && status === "paused" && (
+        <button type="button" className="ghost small replay-restart" onClick={resume}>
+          ▶ 이어보기
+        </button>
+      )}
+      {!failed && status === "finished" && (
+        <button type="button" className="ghost small replay-restart" onClick={playFromStart}>
           ↻ 처음부터 재생
         </button>
       )}
