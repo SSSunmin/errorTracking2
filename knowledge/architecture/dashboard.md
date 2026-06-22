@@ -1,9 +1,9 @@
 ---
 type: Architecture
 title: React 대시보드
-description: packages/dashboard. React + Vite + TanStack Query + React Router SPA. 인메모리 액세스 토큰 + 리프레시 쿠키, 코얼레스드 refresh, 페이지별 구성. IssueDetailPage에서 DOM 스냅샷(feature B)을 sandboxed iframe으로, 세션 리플레이(feature C)를 rrweb Replayer로 렌더링.
+description: packages/dashboard. React + Vite + TanStack Query + React Router SPA. 인메모리 액세스 토큰 + 리프레시 쿠키, 코얼레스드 refresh, 페이지별 구성. IssueDetailPage에서 DOM 스냅샷(feature B)을 sandboxed iframe으로, 세션 리플레이(feature C)를 rrweb Replayer로 렌더링. 심볼리케이션된 프레임의 원본 위치 우선 표시.
 resource: packages/dashboard/src/App.tsx
-tags: [dashboard, react, vite, tanstack-query, spa, auth, snapshot, replay, rrweb]
+tags: [dashboard, react, vite, tanstack-query, spa, auth, snapshot, replay, rrweb, symbolication]
 timestamp: 2026-06-22
 ---
 
@@ -91,6 +91,14 @@ N개의 병렬 401이 단 1회의 토큰 회전만 발생시킨다.
   - sandbox: `allow-same-origin`만 허용 — 캡처된 `<script>`가 실행되지 않는다. `UNSAFE_replayCanvas` 미사용.
   - 의존성: `rrweb` (dashboard `package.json`, `rrweb/dist/style.css`포함).
   - **known limitation**: 실제 서비스에서 신뢰할 수 없는 녹화는 별도 오리진에서 서빙해야 stored XSS 위험을 차단할 수 있다(현재 미구현).
+- **스택트레이스 심볼리케이션 렌더링** (`IssueDetailPage`, `frames` 섹션):
+  - 서버가 `EventDetail.stacktrace.frames[]`에 `originalFilename` 등 원본 위치 필드를 채워 보내면, 대시보드는 이를 우선 표시한다.
+  - **함수명**: `frame.originalFunction`이 있으면 우선 사용, 없으면 `frame.function` fallback, 없으면 `<anonymous>`.
+  - **파일:줄**: `originalFilename`이 있으면 원본 위치(`originalFilename:originalLineno`) 표시.
+  - **contextLine**: `frame.contextLine`이 있으면 원본 코드 한 줄을 `<code>` 블록으로 표시.
+  - **미니파이 보조 표시**: 심볼리케이션된 프레임에는 미니파이 위치를 `↳ minified.js:N` 형식으로 보조(`.frame-minified`) 표기.
+  - **판별 기준**: `frame.originalFilename !== undefined`이면 심볼리케이션된 프레임으로 판단.
+  - 원본 위치 필드가 없는 프레임(소스맵 미매칭·미업로드)은 기존 미니파이 위치 그대로 렌더링.
 
 ### AlertsPage
 - 알림 규칙 목록 + 인라인 생성 폼

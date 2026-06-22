@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-22 (소스맵 심볼리케이션 기능 추가)
+- **API 신규**: `api/sourcemaps-api` 생성. 업로드(`POST /api/projects/:id/releases/:release/sourcemaps` — JWT 인증, `application/octet-stream`, 20 MiB 상한, `?filename=`, gzip 압축 upsert, 업로드 시 `Event.symbolicated` 캐시 무효화 `updateMany`, 201 응답)와 목록 조회(`GET` 동일 경로) 상세 기술. 업로드 CLI(`scripts/upload-sourcemaps.mjs` — `*.map` 재귀 스캔, `MINI_SENTRY_TOKEN` env 또는 `--token`). 알려진 한계 4종(basename 충돌·전량 메모리 로드·업로드 시 mass write·읽기 시 쓰기 중복) 명시.
+- **DB**: `database/data-model`(SourceMap 모델 절 신규, Event.symbolicated 필드 추가, Project 관계에 `sourceMaps[]` 추가, 모델 수 10→11, 마이그레이션 2건 명시), `database/erd`(SourceMap 엔티티+`Project ||--o{ SourceMap` 관계 추가, Event에 `symbolicated` 필드 추가, 엔티티/관계 설명 표 갱신, 표기/주의 절에 SourceMap 관련 주의사항 추가).
+- **아키텍처**: `architecture/ingestion-pipeline`에 "5단계: 소스맵 심볼리케이션" 절 신규 추가(lazy 조회 흐름, `symbolicateFrames` 처리 규칙, 업로드 시 캐시 무효화, `EventDetail.stacktrace`의 original* 필드 표). `architecture/dashboard`에 스택트레이스 심볼리케이션 렌더링 동작 추가(원본 함수명·파일:줄·contextLine 우선 표시, 미니파이 보조 ↳ 표기).
+- **이슈 API**: `api/issues-api`의 `EventDetail.stacktrace` 설명에 original* 필드 표 추가(originalFilename/originalLineno/originalColno/originalFunction/contextLine). 소스맵 API·인제스트 파이프라인 관련 개념 링크 추가.
+- **로드맵**: `roadmap/roadmap`에서 "소스맵 심볼리케이션"을 범위 밖 → 구현 완료로 이동.
+- **index.md**: 데이터 모델 모델 수 10→11, ERD 설명 갱신, 이슈 API 설명 갱신, `api/sourcemaps-api` 항목 신규 추가.
+
 ## 2026-06-22 (fix/replay-viewport-meta — 세션 리플레이 뷰포트 버그 수정)
 - **SDK (`architecture/sdk`)**: `trimReplayBuffer`가 `isMeta` 술어를 인자로 받도록 변경됨. FullSnapshot 앵커 직전의 가장 최근 Meta 이벤트(type 4, 뷰포트 width/height 포함)를 슬라이스 앞에 prepend해 업로드 스트림이 항상 `[Meta, FullSnapshot, ...]`으로 시작하도록 보장. 이전에는 Meta가 버려져 마우스 좌표가 `W_real/1280` 비율만큼 어긋나는 버그 발생. `알려진 한계` 절의 "Meta 이벤트 손실" 항목을 수정 완료 내용으로 갱신. `trimReplayBuffer` 동작 설명에 Meta prepend 단계 추가.
 - **대시보드 (`architecture/dashboard`)**: `ReplayPlayer`가 스트림의 실제 Meta 이벤트에서 `data.width`/`data.height`를 읽어 뷰포트를 결정하도록 변경됨. Meta가 없거나 크기가 0 이하이면 `1280×720` placeholder로 fallback(이전 녹화 backward-compat). placeholder 합성 Meta는 Meta 자체가 없는 스트림에만 삽입. 기존 "1280×720 hardcoded" known limitation 설명을 새 동작으로 교체.

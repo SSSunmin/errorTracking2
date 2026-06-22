@@ -106,8 +106,51 @@ SELECT pg_advisory_xact_lock(hashtextextended('<ruleId>:<issueId>', 0))
 - `lockDuration: 60_000ms`, `lockRenewTime: 30_000ms`
 - SIGINT/SIGTERM 시 graceful shutdown (`worker.close()` + `prisma.$disconnect()`)
 
+## 5단계: 소스맵 심볼리케이션 (이벤트 조회 시 lazy)
+
+심볼리케이션은 인제스트(쓰기) 시점이 아닌 **이벤트 조회(읽기) 시점에 lazy**하게 수행된다.
+
+```text
+GET /.../issues/:issueId/events
+  │
+  ├─ Event.symbolicated 캐시가 있으면 → 그대로 반환
+  │
+  └─ 캐시 없으면 → symbolicateEvents()
+       │
+       ├─ release별 SourceMap 전량 DB 조회 + gunzip (loadSourceMapsByName)
+       ├─ symbolicateFrames() — basename 매칭 → originalPositionFor
+       └─ 변환 성공 시 Event.symbolicated에 best-effort 캐시 write
+```
+
+### `symbolicateFrames` 처리 규칙 (`symbolicate.ts`)
+
+- `frameBasename(frame.filename)`: 스택 프레임 URL에서 쿼리·해시 제거 후 basename 추출 → `SourceMap.filename`과 매칭 키로 사용
+- `@jridgewell/trace-mapping`의 `originalPositionFor`로 원본 위치(`originalFilename`, `originalLineno`, `originalColno`, `originalFunction`) 조회
+- `contextLine`: 소스맵에 `sourcesContent`가 있으면 해당 원본 줄을 추출해 최대 240 코드포인트로 잘라 첨부
+- 1-based 컬럼(`frame.colno`) → 0-based 변환(`Math.max(colno - 1, 0)`)
+- 깨진 소스맵·미매칭·`lineno` 없는 프레임은 원본 유지
+
+### 소스맵 업로드 시 캐시 무효화
+
+`POST /api/projects/:id/releases/:release/sourcemaps` 업로드 성공 시, 해당 `(projectId, release)`의 모든 `Event.symbolicated`를 `updateMany`로 `null`로 재설정한다. 다음 조회 시 새 소스맵으로 재심볼리케이션된다.
+
+### `EventDetail.stacktrace`의 original* 필드
+
+심볼리케이션된 이벤트의 `stacktrace.frames[]`에는 원본 위치 필드가 추가된다:
+
+| 필드 | 설명 |
+|---|---|
+| `originalFilename` | 원본 소스 파일 경로 |
+| `originalLineno` | 원본 줄 번호 |
+| `originalColno` | 원본 컬럼 번호 |
+| `originalFunction` | 원본 함수명 (소스맵에 이름 있을 때) |
+| `contextLine` | 원본 줄 코드 한 줄 (sourcesContent 있을 때) |
+
+미니파이 위치(`filename`, `lineno`, `colno`)는 그대로 보존된다. 이슈 API 응답 스키마에서 `stacktrace`는 `z.unknown()`이라 필드 추가에 스키마 변경이 없다.
+
 ## 관련 개념
 - [인제스트 API](/api/ingest-api.md)
+- [소스맵 API](/api/sourcemaps-api.md)
 - [알림 API](/api/alerts-api.md)
 - [데이터 모델](/database/data-model.md)
 - [시스템 아키텍처](/architecture/system.md)

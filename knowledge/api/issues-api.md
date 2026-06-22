@@ -1,10 +1,10 @@
 ---
 type: API Reference
 title: 이슈 API
-description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 소유권 스코프.
+description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 소유권 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용.
 resource: packages/server/src/modules/issues/routes.ts
-tags: [api, issues, events, stats, pagination, snapshot, replay]
-timestamp: 2026-06-19
+tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication]
+timestamp: 2026-06-22
 ---
 
 # 이슈 API
@@ -92,12 +92,25 @@ id, message, exceptionType, exceptionValue, level, environment, release, timesta
 
 - `hasSnapshot: boolean` — 해당 이벤트에 DOM 스냅샷(feature B)이 존재하는지 여부. `true`일 때 스냅샷 엔드포인트로 실제 데이터 조회 가능.
 - `hasReplay: boolean` — 해당 이벤트에 세션 리플레이 녹화(feature C)가 존재하는지 여부. 서비스 레이어가 이벤트 페이지의 `clientEventId` 목록을 한 번의 쿼리로 `EventReplay` 테이블과 대조해 산출한다. `true`일 때 리플레이 엔드포인트로 조회 가능.
+- `stacktrace`: 소스맵이 업로드되어 있으면 서비스 레이어(`resolveStacktraces`)가 lazy 심볼리케이션을 수행한 뒤 결과를 반환한다. 심볼리케이션된 프레임에는 다음 필드가 추가된다:
+
+| 필드 | 타입 | 설명 |
+|---|---|---|
+| `originalFilename` | string | 원본 소스 파일 경로 |
+| `originalLineno` | number | 원본 줄 번호 |
+| `originalColno` | number | 원본 컬럼 번호 |
+| `originalFunction` | string? | 원본 함수명 (소스맵에 이름 있을 때) |
+| `contextLine` | string? | 원본 줄 코드 한 줄 (sourcesContent 있을 때, 최대 240 코드포인트) |
+
+미니파이 위치(`filename`, `lineno`, `colno`)는 그대로 보존된다. 소스맵 미업로드·미매칭 프레임은 원본 유지. `stacktrace` 응답 스키마는 `z.unknown()`이므로 필드 추가에 스키마 변경 없음.
 
 > `contexts`에는 서버가 User-Agent에서 파싱한 `browser`/`os`/`device`가 포함되며, `userAgent`는 원문 문자열이다.
 
 ## 관련 개념
 - [인제스트 API](/api/ingest-api.md)
+- [소스맵 API](/api/sourcemaps-api.md)
 - [세션 리플레이 API](/api/replay-api.md)
 - [알림 API](/api/alerts-api.md)
 - [데이터 모델](/database/data-model.md)
+- [인제스트 파이프라인](/architecture/ingestion-pipeline.md)
 - [시스템 아키텍처](/architecture/system.md)

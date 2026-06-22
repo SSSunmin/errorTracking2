@@ -4,6 +4,7 @@ import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 import { unauthorized } from "../../lib/errors.js";
 import { alertRuleRoutes } from "../alert-rules/routes.js";
 import { issueRoutes } from "../issues/routes.js";
+import { sourceMapRoutes } from "../sourcemaps/routes.js";
 import {
   createProject,
   createProjectKey,
@@ -187,6 +188,7 @@ export const projectRoutes: FastifyPluginCallbackZod = (app, _options, done) => 
 
   void app.register(issueRoutes);
   void app.register(alertRuleRoutes);
+  void app.register(sourceMapRoutes);
 
   done();
 };

@@ -1,15 +1,15 @@
 ---
 type: Roadmap
 title: 로드맵 / 단계
-description: Phase 1~8 모두 구현 완료. 범위 밖(미구현) 항목 정리.
+description: Phase 1~8 모두 구현 완료. 소스맵 심볼리케이션 구현 완료. 잔여 미구현 항목 정리.
 resource: README.md
-tags: [roadmap, phases, planning]
-timestamp: 2026-06-16
+tags: [roadmap, phases, planning, sourcemap, symbolication]
+timestamp: 2026-06-22
 ---
 
 # 로드맵
 
-## ✅ 구현 완료 (Phase 1~8)
+## ✅ 구현 완료 (Phase 1~8 + 소스맵 심볼리케이션)
 - **Phase 1 — 모노레포 + 인프라**: npm workspaces, PostgreSQL·Redis docker-compose, 검증 스크립트(typecheck·test·lint).
 - **Phase 2 — 데이터 모델**: Prisma 스키마·마이그레이션·seed — [데이터 모델](/database/data-model.md) / [ERD](/database/erd.md).
 - **Phase 3 — 인증 + 프로젝트/DSN**: argon2·JWT(`jti`·alg 고정)·리프레시 회전·재사용 패밀리 회수 — [인증 API](/api/auth-api.md) / [인증 플로우](/architecture/auth-flow.md) / [프로젝트 API](/api/projects-api.md).
@@ -18,12 +18,12 @@ timestamp: 2026-06-16
 - **Phase 6 — 브라우저 SDK**: 전역 캐치·breadcrumbs·스택 파싱·transport, 호스트 무중단 — [브라우저 SDK](/architecture/sdk.md).
 - **Phase 7 — 대시보드**: React+Vite+TanStack Query+Router SPA — [대시보드](/architecture/dashboard.md).
 - **Phase 8 — 통합 검증**: 엔드투엔드 검증, 보안 패치, 문서.
+- **소스맵 심볼리케이션**: JWT 인증 업로드 API, lazy 심볼리케이션(조회 시 캐시), `@jridgewell/trace-mapping` 기반, contextLine, 업로드 CLI(`scripts/upload-sourcemaps.mjs`), 대시보드 원본 위치 표시 — [소스맵 API](/api/sourcemaps-api.md).
 
 > 구현된 파이프라인: `Browser SDK → Ingest API → Redis/BullMQ 큐 → Worker → fingerprint 그룹핑 → PostgreSQL` + `React 대시보드 → JWT 인증 API` + `알림 → Email/Slack`. [시스템 아키텍처](/architecture/system.md) 참고.
 
 ## 🚫 범위 밖 (미구현)
 - 이메일 인증 / 비밀번호 재설정 / 2FA
-- 소스맵 심볼리케이션(미니파이 스택 복원)
 - 멀티 조직 / 팀
 - 시계열 DB 샤딩
 
