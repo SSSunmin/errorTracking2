@@ -223,15 +223,15 @@ const SnapshotSection = ({
   );
 };
 
+type ReplayStatus = "idle" | "playing" | "paused" | "finished";
+
 /** Plays a recorded rrweb session with rrweb's Replayer, mounted imperatively
  *  into a container ref and CSS-scaled to fit the card. Playback does NOT start
  *  automatically: the Replayer renders the first frame on construction and waits
  *  for the user to press play; when playback finishes a "replay from start"
  *  control appears. Construction is try/catch wrapped so a malformed recording
- *  degrades to a muted line instead of breaking the page; teardown pauses the
- *  player and clears the container. */
-type ReplayStatus = "idle" | "playing" | "paused" | "finished";
-
+ *  degrades to a muted line instead of breaking the page; teardown destroys the
+ *  player (clearing its timer and listeners) and the container. */
 const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
   const containerRef = useRef<HTMLDivElement>(null);
   const replayerRef = useRef<Replayer | null>(null);
@@ -351,9 +351,11 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
     return () => {
       observer?.disconnect();
       try {
-        // rrweb's Replayer has no destroy() in v2; pausing, dropping the ref and
-        // clearing the DOM is the available teardown (listeners GC with it).
-        replayer?.pause();
+        // destroy() pauses the timer, resets state, removes the wrapper from the
+        // DOM and detaches rrweb's internal listeners — the proper teardown so a
+        // stale Finish/Resize handler from a replaced recording can't fire into
+        // the next effect. replaceChildren() below is a belt-and-suspenders clear.
+        replayer?.destroy();
       } catch {
         /* ignore teardown failures */
       }
