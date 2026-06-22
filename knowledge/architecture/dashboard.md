@@ -4,7 +4,7 @@ title: React 대시보드
 description: packages/dashboard. React + Vite + TanStack Query + React Router SPA. 인메모리 액세스 토큰 + 리프레시 쿠키, 코얼레스드 refresh, 페이지별 구성. IssueDetailPage에서 DOM 스냅샷(feature B)을 sandboxed iframe으로, 세션 리플레이(feature C)를 rrweb Replayer로 렌더링.
 resource: packages/dashboard/src/App.tsx
 tags: [dashboard, react, vite, tanstack-query, spa, auth, snapshot, replay, rrweb]
-timestamp: 2026-06-19
+timestamp: 2026-06-22
 ---
 
 # React 대시보드 (`packages/dashboard`)
@@ -84,8 +84,8 @@ N개의 병렬 401이 단 1회의 토큰 회전만 발생시킨다.
   - 선택한 이벤트의 `hasReplay === true`일 때 `ReplaySection`이 렌더링된다.
   - `api.getEventReplay(projectId, issueId, eventId)` 호출 (`TanStack Query`, `staleTime: Infinity`). 404는 `null`로 처리해 에러로 throw하지 않는다.
   - `ReplayPlayer`가 rrweb `Replayer`를 사용해 DOM을 재생한다(`rrweb/dist/style.css` 임포트). rrweb-player(별도 패키지)가 아닌 rrweb 내장 `Replayer` 직접 사용.
-  - **Meta 이벤트 합성**: SDK trim이 leading Meta 이벤트(type 4)를 제거하므로, 첫 이벤트가 FullSnapshot(type 2)이면 `{ type: 4, data: { href: window.location.href, width: 1280, height: 720 } }` placeholder를 앞에 삽입한다. 실제 뷰포트 크기가 다를 수 있다(known limitation).
-  - `Replayer` 옵션: `{ root: container, mouseTail: false, speed: 1 }`. 생성 직후 `.play()` 호출. 뷰포트(synthesized 1280×720)를 카드 너비에 맞게 scale down.
+  - **뷰포트 크기 결정 (fix/replay-viewport-meta)**: SDK trim 수정으로 업로드 스트림이 이제 `[Meta(4), FullSnapshot(2), ...]`으로 시작한다. `ReplayPlayer`는 스트림에서 첫 번째 Meta 이벤트를 찾아(`events.find(e => e.type === EventType.Meta)`) `data.width` / `data.height`를 실제 녹화 뷰포트로 사용한다. Meta가 없거나(`meta === undefined`) 값이 0 이하이면 `1280×720` placeholder로 fallback한다(이전 녹화 backward-compat). placeholder는 Meta 없이 FullSnapshot으로 시작하는 스트림에만 합성 삽입한다.
+  - `Replayer` 옵션: `{ root: container, mouseTail: false, speed: 1 }`. 생성 직후 `.play()` 호출. `.replayer-wrapper`를 실제(또는 fallback) 뷰포트 기준으로 카드 너비에 맞게 scale down(`ResizeObserver`로 재조정).
   - "↻ 처음부터 재생" 버튼: `replayerRef.current?.play(0)`.
   - 초기화 실패 시 "리플레이를 재생할 수 없습니다." 안내로 graceful degrade.
   - sandbox: `allow-same-origin`만 허용 — 캡처된 `<script>`가 실행되지 않는다. `UNSAFE_replayCanvas` 미사용.

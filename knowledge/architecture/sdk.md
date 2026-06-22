@@ -4,7 +4,7 @@ title: 브라우저 SDK
 description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음). captureException 시 rrweb-snapshot으로 마스킹된 DOM 스냅샷 수집(captureReplay 기본 true). sessionReplay 옵션(기본 false)으로 rrweb 롤링 30초 버퍼 녹화 + fflate gzip 업로드 지원(feature C).'
 resource: packages/sdk/src/index.ts
 tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack, replay, snapshot, session-replay, rrweb, fflate]
-timestamp: 2026-06-19
+timestamp: 2026-06-22
 ---
 
 # 브라우저 SDK (`@mini-sentry/sdk`)
@@ -212,6 +212,7 @@ V8/Chromium `Error.stack` 형식(`at fn (loc)` 또는 `at loc`) 파싱.
   - cutoff(`now - 30s`) 이전에서 가장 최근 full snapshot을 앵커로 삼아 그 이전 이벤트를 제거.
   - full snapshot이 cutoff 이내에만 있으면(버퍼가 30초 미만) 가장 이른 full snapshot을 앵커로 사용 → 항상 full snapshot으로 시작하는 버퍼 보장.
   - full snapshot이 전혀 없으면 이벤트 전부 유지.
+  - 앵커(FullSnapshot) 직전에 있는 가장 최근 Meta 이벤트를 슬라이스 앞에 prepend — 뷰포트 width/height 보존(fix/replay-viewport-meta).
 - `snapshot()` 호출 시 내부 배열 사본 반환.
 - 브라우저 환경이 아니거나 `record()` 실패 시 **inert handle** 반환(`snapshot()→[]`, `stop()→no-op`). 텔레메트리가 절대 호스트 앱에 throw하지 않는다.
 
@@ -238,7 +239,7 @@ captureException() 호출
 
 ### 알려진 한계 / 후속 과제
 
-- **Meta 이벤트 손실**: SDK trim이 leading Meta 이벤트(type 4, 뷰포트 크기 포함)를 버퍼에서 제거한다. 대시보드 `ReplayPlayer`가 첫 이벤트가 FullSnapshot(type 2)일 때 `1280×720` placeholder Meta를 합성해 보완한다. 실제 뷰포트가 달라도 synthesized size가 사용된다.
+- **Meta 이벤트 보존 (fix/replay-viewport-meta)**: `trimReplayBuffer`가 `isMeta` 술어를 인자로 받아, FullSnapshot 앵커 이전에 있는 가장 최근 Meta 이벤트(type 4, 뷰포트 width/height 포함)를 슬라이스 앞에 자동으로 prepend한다. rrweb은 `Meta(4) → FullSnapshot(2) → incremental(3…)` 순으로 emit하므로, 이전에는 슬라이스 시작이 `[FullSnapshot, ...]`이 되어 뷰포트 크기가 소실되었다. 수정 후 스트림은 항상 `[Meta, FullSnapshot, ...]`으로 시작한다. Meta가 앵커 이전에 없는 경우(버퍼 최초 초기화 직후 등)에는 prepend 없이 기존 동작을 유지한다.
 - **보관 한도 없음**: `EventReplay`에 TTL/quota 정책이 없다. 리플레이가 누적되면 스토리지를 무제한으로 차지한다(추후 과제).
 - **보안**: 리플레이 뷰가 대시보드와 같은 오리진에서 렌더링된다(`allow-same-origin`). 신뢰할 수 없는 녹화는 별도 오리진에서 서빙해야 한다(현재 미구현).
 - **captureMessage 미지원**: 세션 리플레이 업로드는 `captureException`에서만 실행된다.

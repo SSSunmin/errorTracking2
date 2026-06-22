@@ -2,6 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-22 (fix/replay-viewport-meta — 세션 리플레이 뷰포트 버그 수정)
+- **SDK (`architecture/sdk`)**: `trimReplayBuffer`가 `isMeta` 술어를 인자로 받도록 변경됨. FullSnapshot 앵커 직전의 가장 최근 Meta 이벤트(type 4, 뷰포트 width/height 포함)를 슬라이스 앞에 prepend해 업로드 스트림이 항상 `[Meta, FullSnapshot, ...]`으로 시작하도록 보장. 이전에는 Meta가 버려져 마우스 좌표가 `W_real/1280` 비율만큼 어긋나는 버그 발생. `알려진 한계` 절의 "Meta 이벤트 손실" 항목을 수정 완료 내용으로 갱신. `trimReplayBuffer` 동작 설명에 Meta prepend 단계 추가.
+- **대시보드 (`architecture/dashboard`)**: `ReplayPlayer`가 스트림의 실제 Meta 이벤트에서 `data.width`/`data.height`를 읽어 뷰포트를 결정하도록 변경됨. Meta가 없거나 크기가 0 이하이면 `1280×720` placeholder로 fallback(이전 녹화 backward-compat). placeholder 합성 Meta는 Meta 자체가 없는 스트림에만 삽입. 기존 "1280×720 hardcoded" known limitation 설명을 새 동작으로 교체.
+
 ## 2026-06-19 (session replay 기능 추가 — feature C)
 - **DB**: `EventReplay` 모델 신규(`clientEventId` unique, `projectId` 비정규화, `data` Bytes/BYTEA gzip, `eventCount?`/`durationMs?`/`sizeBytes?` Int?, `@@index([projectId])`). `Event`에 `clientEventId String?` + `@@index([clientEventId])` 추가. 마이그레이션 `20260618083417_add_event_replay`. `database/data-model`(EventReplay 모델 절 신규, Event clientEventId 필드 추가, 모델 수 9→10), `database/erd`(ERD 다이어그램에 `EventReplay` 엔티티 + Event `clientEventId` 필드 추가, 엔티티/관계 설명 표·주의 절 갱신 — EventReplay는 FK 없이 논리적 연결임을 명시).
 - **API 신규**: `api/replay-api` 생성. 업로드(`POST /api/:projectId/replay` — DSN 공개키 인증, 퍼미시브 CORS, RAW gzip octet-stream, 5 MiB 상한, `?eventId&count&durMs`, upsert by clientEventId, 202 응답)와 조회(`GET /api/projects/:id/issues/:issueId/events/:eventId/replay` — JWT 인증, content-encoding:gzip, 404 시 NOT_FOUND) 상세 기술.

@@ -16,6 +16,9 @@ export interface SessionReplayHandle {
 const isFullSnapshotEvent = (event: eventWithTime): boolean =>
   event.type === EventType.FullSnapshot;
 
+const isMetaEvent = (event: eventWithTime): boolean =>
+  event.type === EventType.Meta;
+
 /**
  * Pure, unit-testable trim. Drops events older than `nowMs - windowMs`, but
  * never trims past the most recent full-snapshot boundary at or before the
@@ -30,7 +33,8 @@ export const trimReplayBuffer = (
   events: eventWithTime[],
   nowMs: number,
   windowMs: number,
-  isFullSnapshot: (event: eventWithTime) => boolean
+  isFullSnapshot: (event: eventWithTime) => boolean,
+  isMeta: (event: eventWithTime) => boolean
 ): eventWithTime[] => {
   const cutoff = nowMs - windowMs;
 
@@ -56,7 +60,26 @@ export const trimReplayBuffer = (
     return events;
   }
 
-  return events.slice(startIndex);
+  // events[startIndex] is the FullSnapshot anchor. rrweb emits the viewport-size
+  // Meta event immediately before each FullSnapshot, so scan *strictly before*
+  // the anchor for the nearest Meta and prepend it — otherwise the slice loses
+  // the recorded width/height and the player is forced to guess the scale.
+  // Scanning from startIndex - 1 keeps the anchor (never a Meta) out of range,
+  // so a Meta already inside the slice needs no special-casing.
+  let mostRecentMetaIndex = -1;
+  for (let index = startIndex - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event !== undefined && isMeta(event)) {
+      mostRecentMetaIndex = index;
+      break;
+    }
+  }
+  const trimmed = events.slice(startIndex);
+  if (mostRecentMetaIndex === -1) {
+    return trimmed;
+  }
+  const meta = events[mostRecentMetaIndex];
+  return meta === undefined ? trimmed : [meta, ...trimmed];
 };
 
 /**
@@ -90,7 +113,8 @@ export const startSessionReplay = (
             events,
             Date.now(),
             REPLAY_WINDOW_MS,
-            isFullSnapshotEvent
+            isFullSnapshotEvent,
+            isMetaEvent
           );
         } catch {
           /* never let buffer maintenance throw into rrweb's emit */

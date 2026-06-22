@@ -1,7 +1,7 @@
 /**
  * Unit tests for the pure `trimReplayBuffer` helper (sessionReplay.ts).
  *
- * EventType.FullSnapshot === 2 (from rrweb).
+ * EventType.FullSnapshot === 2 and EventType.Meta === 4 (from rrweb).
  *
  * Cases covered:
  *  - All events within the window → buffer unchanged
@@ -20,10 +20,11 @@ import { trimReplayBuffer } from "./sessionReplay.js";
 
 // rrweb EventType.FullSnapshot === 2
 const FULL_SNAPSHOT = EventType.FullSnapshot; // 2
+const META = EventType.Meta; // 4
 
 const makeEvent = (
   timestamp: number,
-  type: number = EventType.Meta // 4, a non-snapshot type
+  type: number = EventType.IncrementalSnapshot // 3, a non-snapshot type
 ): eventWithTime =>
   ({
     type,
@@ -35,13 +36,25 @@ const makeEvent = (
 const makeFullSnapshot = (timestamp: number): eventWithTime =>
   makeEvent(timestamp, FULL_SNAPSHOT);
 
+const makeMeta = (
+  timestamp: number,
+  width = 1440,
+  height = 900
+): eventWithTime =>
+  ({
+    type: META,
+    timestamp,
+    data: { href: "https://example.test", width, height }
+  }) as unknown as eventWithTime;
+
 // The real isFullSnapshot predicate (same as production code)
 const isFullSnapshot = (event: eventWithTime): boolean =>
   event.type === FULL_SNAPSHOT;
+const isMeta = (event: eventWithTime): boolean => event.type === META;
 
 describe("trimReplayBuffer", () => {
   test("empty buffer returns empty array", () => {
-    const result = trimReplayBuffer([], 10_000, 30_000, isFullSnapshot);
+    const result = trimReplayBuffer([], 10_000, 30_000, isFullSnapshot, isMeta);
     expect(result).toEqual([]);
   });
 
@@ -54,7 +67,7 @@ describe("trimReplayBuffer", () => {
       makeEvent(85_000),
       makeEvent(95_000)
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     expect(result).toHaveLength(3);
     expect(result).toBe(events); // same reference — startIndex <= 0 path
   });
@@ -68,7 +81,7 @@ describe("trimReplayBuffer", () => {
       makeEvent(60_000),
       makeEvent(95_000)
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     // Per implementation: anchorIndex stays -1, firstSnapshotIndex stays -1 →
     // startIndex = -1, startIndex <= 0 → return events unchanged
     expect(result).toHaveLength(3);
@@ -86,7 +99,7 @@ describe("trimReplayBuffer", () => {
       makeEvent(50_000),
       makeEvent(95_000)
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     // anchorIndex = 0 → startIndex = 0 → guard (startIndex <= 0) → return all
     expect(result).toHaveLength(3);
     expect(result).toBe(events);
@@ -105,11 +118,94 @@ describe("trimReplayBuffer", () => {
       makeEvent(75_000),        // index 2, inside window
       makeEvent(95_000)         // index 3
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     expect(result).toHaveLength(3);
     expect(result[0]).toBe(events[1]); // starts at the newer snapshot anchor
     expect(result[1]).toBe(events[2]);
     expect(result[2]).toBe(events[3]);
+  });
+
+  test("preserves preceding Meta when trimming to a newer full snapshot anchor", () => {
+    const now = 100_000;
+    const windowMs = 30_000;
+    const events = [
+      makeMeta(5_000),
+      makeFullSnapshot(10_000),
+      makeEvent(20_000),
+      makeEvent(45_000),
+      makeFullSnapshot(60_000),
+      makeEvent(75_000),
+      makeEvent(95_000)
+    ];
+
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
+
+    expect(result).toHaveLength(4);
+    expect(result[0]).toBe(events[0]);
+    expect(result[1]).toBe(events[4]);
+    expect(result[2]).toBe(events[5]);
+    expect(result[3]).toBe(events[6]);
+  });
+
+  test("preserves Meta in a single-snapshot rolling buffer when the snapshot is sliced to", () => {
+    const now = 100_000;
+    const windowMs = 30_000;
+    const events = [
+      makeMeta(55_000),
+      makeFullSnapshot(60_000),
+      makeEvent(62_000),
+      makeEvent(68_000),
+      makeEvent(95_000)
+    ];
+
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
+
+    expect(result).toHaveLength(5);
+    expect(result[0]).toBe(events[0]);
+    expect(result[1]).toBe(events[1]);
+    expect(result[2]).toBe(events[2]);
+    expect(result[3]).toBe(events[3]);
+    expect(result[4]).toBe(events[4]);
+  });
+
+  test("multiple Metas before the anchor: only the nearest one is prepended, older Meta dropped", () => {
+    const now = 100_000;
+    const windowMs = 30_000;
+    // cutoff = 70_000. Two Meta→FullSnapshot cycles; the latest snapshot at or
+    // before the cutoff is the second one (index 4), so its paired Meta (index 3,
+    // 800×600) must survive while the stale first cycle (indices 0–2) is dropped.
+    const events = [
+      makeMeta(5_000, 1440, 900),   // index 0, stale meta → dropped
+      makeFullSnapshot(10_000),     // index 1, stale snapshot → dropped
+      makeEvent(12_000),            // index 2, stale → dropped
+      makeMeta(55_000, 800, 600),   // index 3, meta paired with the anchor
+      makeFullSnapshot(60_000),     // index 4, latest snapshot <= cutoff → anchor
+      makeEvent(95_000)             // index 5, inside window
+    ];
+
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
+
+    expect(result).toHaveLength(3);
+    expect(result[0]).toBe(events[3]); // nearest Meta (800×600), not the stale one
+    expect(result[1]).toBe(events[4]); // anchor full snapshot
+    expect(result[2]).toBe(events[5]);
+  });
+
+  test("slicing without Meta keeps existing behavior and does not synthesize Meta", () => {
+    const now = 100_000;
+    const windowMs = 30_000;
+    const events = [
+      makeEvent(10_000),
+      makeFullSnapshot(60_000),
+      makeEvent(80_000)
+    ];
+
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
+
+    expect(result).toHaveLength(2);
+    expect(result[0]).toBe(events[1]);
+    expect(result[0]?.type).toBe(EventType.FullSnapshot);
+    expect(result[1]).toBe(events[2]);
   });
 
   test("newer full snapshot inside window: events before it (outside window) are dropped", () => {
@@ -133,7 +229,7 @@ describe("trimReplayBuffer", () => {
       makeFullSnapshot(85_000), // index 4, inside window (after cutoff, doesn't affect anchorIndex)
       makeEvent(95_000)         // index 5
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     // anchorIndex = 2 → startIndex = 2 → slice(2) → drop indices 0 and 1
     expect(result).toHaveLength(4);
     expect(result[0]).toBe(events[2]); // the 60_000 full snapshot is the anchor
@@ -154,7 +250,7 @@ describe("trimReplayBuffer", () => {
       makeEvent(90_000),        // index 2
       makeEvent(95_000)         // index 3
     ];
-    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, windowMs, isFullSnapshot, isMeta);
     // startIndex = firstSnapshotIndex = 1 → slice(1) → drop index 0
     expect(result).toHaveLength(3);
     expect(result[0]).toBe(events[1]);
@@ -165,7 +261,7 @@ describe("trimReplayBuffer", () => {
   test("single event that is a full snapshot within the window → unchanged", () => {
     const now = 100_000;
     const events = [makeFullSnapshot(90_000)];
-    const result = trimReplayBuffer(events, now, 30_000, isFullSnapshot);
+    const result = trimReplayBuffer(events, now, 30_000, isFullSnapshot, isMeta);
     expect(result).toHaveLength(1);
     expect(result).toBe(events);
   });
@@ -183,7 +279,13 @@ describe("trimReplayBuffer", () => {
       makeEvent(80_000, 1),  // index 3, inside window
       makeEvent(95_000, 1)   // index 4
     ];
-    const result = trimReplayBuffer(events, now, windowMs, customIsFullSnapshot);
+    const result = trimReplayBuffer(
+      events,
+      now,
+      windowMs,
+      customIsFullSnapshot,
+      isMeta
+    );
     // anchorIndex = 2 → slice from 2
     expect(result).toHaveLength(3);
     expect(result[0]).toBe(events[2]);

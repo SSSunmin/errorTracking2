@@ -229,19 +229,32 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
     setFailed(false);
     container.replaceChildren();
 
-    // The SDK's rolling-buffer trim keeps events from the last full snapshot,
-    // which drops the leading Meta event that carries the recorded viewport
-    // size. rrweb needs it to size/build the replay iframe (without it nothing
-    // renders), so re-synthesize one when the stream starts at a full snapshot.
-    // The real href/size are lost to the trim; 1280×720 is a placeholder (see
-    // follow-up: keep the real Meta in the SDK trim for correct scaling).
+    // Newer recordings include the real Meta event, which carries the recorded
+    // viewport size rrweb uses to size/build the replay iframe. Older recordings
+    // may still start at a full snapshot, so synthesize a placeholder only for
+    // that backward-compat path.
+    // After the SDK trim, the leading event is the Meta paired with the first
+    // FullSnapshot, so the first Meta carries the correct recorded viewport.
+    const meta = events.find((event) => event.type === (EventType.Meta as number));
+    const metaData = asRecord(meta?.data);
+    const metaWidth =
+      typeof metaData.width === "number" && metaData.width > 0
+        ? metaData.width
+        : null;
+    const metaHeight =
+      typeof metaData.height === "number" && metaData.height > 0
+        ? metaData.height
+        : null;
+    const viewportWidth = metaWidth ?? 1280;
+    const viewportHeight = metaHeight ?? 720;
+
     const first = events[0];
     const playerEvents: ReplayEvent[] =
-      first?.type === EventType.FullSnapshot
+      meta === undefined && first?.type === EventType.FullSnapshot
         ? [
             {
               type: EventType.Meta,
-              data: { href: "", width: 1280, height: 720 },
+              data: { href: "", width: viewportWidth, height: viewportHeight },
               timestamp: first.timestamp
             },
             ...events
@@ -265,17 +278,17 @@ const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
       );
       replayerRef.current = replayer;
       replayer.play();
-      // Fit the recorded viewport (placeholder 1280×720) to the card width.
+      // Fit the recorded viewport to the card width.
       // Re-apply on resize so a 0-width first paint can't lock a wrong scale.
       const fit = (): void => {
         const wrapper = container.querySelector<HTMLElement>(".replayer-wrapper");
         if (!wrapper || container.clientWidth === 0) {
           return;
         }
-        const scale = container.clientWidth / 1280;
+        const scale = container.clientWidth / viewportWidth;
         wrapper.style.transformOrigin = "top left";
         wrapper.style.transform = `scale(${String(scale)})`;
-        container.style.height = `${String(Math.round(720 * scale))}px`;
+        container.style.height = `${String(Math.round(viewportHeight * scale))}px`;
       };
       fit();
       observer = new ResizeObserver(fit);
