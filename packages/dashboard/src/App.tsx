@@ -12,35 +12,20 @@ import { LoginPage } from "./pages/LoginPage";
 import { MembersPage } from "./pages/MembersPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 
-// Inline editor for the signed-in user's own display name (PATCH /api/auth/me).
-const ProfileName = (): ReactNode => {
+const formatJoinDate = (iso: string): string =>
+  new Date(iso).toLocaleDateString("ko-KR");
+
+// Account modal: shows the signed-in user's id/email/join date (read-only) and
+// lets them edit their own display name (PATCH /api/auth/me).
+const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
   const { user, updateProfile } = useAuth();
-  const [editing, setEditing] = useState(false);
-  const [name, setName] = useState("");
+  const [name, setName] = useState(user?.name ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   if (!user) {
     return null;
-  }
-
-  if (!editing) {
-    return (
-      <span className="row muted">
-        {user.name ?? user.email}
-        <button
-          type="button"
-          className="ghost small"
-          onClick={() => {
-            setName(user.name ?? "");
-            setError(null);
-            setEditing(true);
-          }}
-        >
-          이름 수정
-        </button>
-      </span>
-    );
   }
 
   const save = async (): Promise<void> => {
@@ -50,9 +35,10 @@ const ProfileName = (): ReactNode => {
       return;
     }
     setBusy(true);
+    setError(null);
     try {
       await updateProfile(trimmed);
-      setEditing(false);
+      onClose();
     } catch (err) {
       setError(err instanceof ApiError ? err.message : "이름 변경에 실패했습니다.");
     } finally {
@@ -60,39 +46,98 @@ const ProfileName = (): ReactNode => {
     }
   };
 
+  const copyId = (): void => {
+    void navigator.clipboard?.writeText(user.id).then(() => {
+      setCopied(true);
+      window.setTimeout(() => {
+        setCopied(false);
+      }, 1500);
+    });
+  };
+
   return (
-    <form
-      className="row"
-      onSubmit={(event) => {
-        event.preventDefault();
-        void save();
+    <div
+      className="modal-backdrop"
+      role="presentation"
+      onClick={(event) => {
+        if (event.target === event.currentTarget) {
+          onClose();
+        }
       }}
     >
-      <input
-        type="text"
-        aria-label="이름"
-        value={name}
-        maxLength={120}
-        disabled={busy}
-        onChange={(event) => {
-          setName(event.target.value);
-        }}
-      />
-      <button type="submit" className="ghost small" disabled={busy}>
-        저장
-      </button>
+      <div className="modal" role="dialog" aria-modal="true" aria-label="계정 정보">
+        <div className="card-head">
+          <h3>계정 정보</h3>
+          <button type="button" className="ghost small" onClick={onClose}>
+            닫기
+          </button>
+        </div>
+
+        <dl className="kv">
+          <dt>ID</dt>
+          <dd className="row">
+            <code>{user.id}</code>
+            <button type="button" className="ghost small" onClick={copyId}>
+              {copied ? "복사됨" : "복사"}
+            </button>
+          </dd>
+          <dt>이메일</dt>
+          <dd>{user.email}</dd>
+          <dt>가입일</dt>
+          <dd>{formatJoinDate(user.createdAt)}</dd>
+        </dl>
+
+        <form
+          className="form-grid"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void save();
+          }}
+        >
+          <label className="muted small" htmlFor="profile-name">
+            이름
+          </label>
+          <input
+            id="profile-name"
+            type="text"
+            value={name}
+            maxLength={120}
+            disabled={busy}
+            onChange={(event) => {
+              setName(event.target.value);
+            }}
+          />
+          <button type="submit" className="primary" disabled={busy}>
+            저장
+          </button>
+          {error && <span className="error small">{error}</span>}
+        </form>
+      </div>
+    </div>
+  );
+};
+
+const ProfileMenu = (): ReactNode => {
+  const { user } = useAuth();
+  const [open, setOpen] = useState(false);
+
+  if (!user) {
+    return null;
+  }
+
+  return (
+    <>
       <button
         type="button"
-        className="ghost small"
-        disabled={busy}
+        className="ghost"
         onClick={() => {
-          setEditing(false);
+          setOpen(true);
         }}
       >
-        취소
+        {user.name ?? user.email} ▾
       </button>
-      {error && <span className="error small">{error}</span>}
-    </form>
+      {open && <ProfileModal onClose={() => { setOpen(false); }} />}
+    </>
   );
 };
 
@@ -105,7 +150,7 @@ const Layout = ({ children }: { children: ReactNode }): ReactNode => {
           Mini-Sentry
         </Link>
         <div className="spacer" />
-        <ProfileName />
+        <ProfileMenu />
         <ThemeToggle />
         <button
           type="button"
