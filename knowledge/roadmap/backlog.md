@@ -108,6 +108,12 @@ timestamp: 2026-06-22
 - **환경(environment)·릴리스 추적**(이벤트에 env 태깅, 릴리스별 회귀 보기).
 - 이벤트 **통계 차트** 개선(시계열 추세, 영향 사용자 수 등).
 
+### 검색/필터 강화 — 완료 (2026-06-23, feat/issue-search-filters)
+- `GET /:id/issues`에 필터 4종 추가(마이그레이션 없음): `level`(Issue.level 직접일치), `release`/`environment`(해당 이벤트를 가진 이슈만 — `events.some`, 둘 다 주면 같은 이벤트가 동시 충족), `since`/`until`(Issue.lastSeen inclusive 범위, since>until→400). 기존 status/query/sort/cursor 유지.
+- 대시보드 `IssuesPage`에 레벨 셀렉트·환경/릴리스 입력·기간(date) 입력 추가(로컬 날짜→UTC inclusive 경계 변환).
+- 테스트 +7(level/release/environment/combined/range/검증). 전체 156 green. 근거: [소스맵 API](/api/issues-api.md) 갱신.
+- **follow-up(비차단)**: ① `Event.release`·`environment` 인덱스 부재 — Phase 1 소규모 OK, 대용량 전환 시 `@@index([issueId, release])` 등 추가 권고. ② release/environment 자동완성 드롭다운(현재 자유 텍스트) — distinct 값 엔드포인트 신설 시. ③ 이슈 담당자/코멘트, 환경·릴리스 회귀 보기, 통계 차트 개선은 미착수.
+
 **의존성**: 일부는 스키마 추가 필요(environment 등). 비차단, 범위가 넓어 개별 티켓화 권장.
 
 ---

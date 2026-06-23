@@ -1,10 +1,10 @@
 ---
 type: API Reference
 title: 이슈 API
-description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 소유권 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용.
+description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 소유권 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 추가(P3).
 resource: packages/server/src/modules/issues/routes.ts
-tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication]
-timestamp: 2026-06-22
+tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter]
+timestamp: 2026-06-23
 ---
 
 # 이슈 API
@@ -21,11 +21,27 @@ timestamp: 2026-06-22
 | 파라미터 | 타입 | 기본값 | 설명 |
 |---|---|---|---|
 | `status` | unresolved\|resolved\|ignored | - | 상태 필터 |
+| `level` | debug\|info\|warning\|error\|fatal | - | Issue.level 완전일치 필터 |
+| `release` | string (1–256자) | - | 해당 release 값을 가진 이벤트가 하나 이상 존재하는 이슈만 반환 |
+| `environment` | string (1–256자) | - | 해당 environment 값을 가진 이벤트가 하나 이상 존재하는 이슈만 반환 |
+| `since` | ISO datetime (coerce) | - | Issue.lastSeen ≥ since (inclusive). since > until 이면 400. |
+| `until` | ISO datetime (coerce) | - | Issue.lastSeen ≤ until (inclusive). since > until 이면 400. |
 | `query` | string | - | 제목 부분 검색 (대소문자 무관) |
 | `sort` | lastSeen\|firstSeen\|timesSeen | `lastSeen` | 정렬 기준 (항상 내림차순) |
 | `limit` | 1–100 | 50 | 페이지당 항목 수 |
 | `cursor` | string | - | 커서 기반 페이지네이션 (이전 응답의 `nextCursor`) |
 | `page` | ≥1 | 1 | 오프셋 기반 페이지. `cursor` 있으면 무시. 오프셋 상한: **10,000** |
+
+**필터 의미론:**
+
+- `level` — `Issue.level` 컬럼 직접 일치 (`WHERE level = ?`).
+- `release` / `environment` — `Event` 테이블 기반 관계 필터. 해당 값을 가진 이벤트가 **하나 이상(some)** 속한 이슈만 반환한다. 두 파라미터를 **동시에** 지정하면 **같은 이벤트 하나**가 `release`와 `environment`를 모두 충족해야 매치된다(Prisma `events: { some: { release, environment } }`로 구현). 각각 단독 지정하면 독립 필터.
+- `since` / `until` — `Issue.lastSeen` 기준 inclusive 범위. `z.coerce.date()`로 파싱하므로 ISO 8601 문자열 전달. `since > until`이면 스키마 레벨 refine에서 400 반환.
+
+**알려진 한계:**
+
+- `Event.release` · `Event.environment` 컬럼에 **전용 인덱스가 없다**(Phase 1 소규모 환경에서는 허용). 대용량 운영 시 `@@index([projectId, release])` / `@@index([projectId, environment])` 인덱스 추가를 권고한다.
+- `release` · `environment` 필터 값은 **자유 텍스트 입력**이다. 프로젝트 내 실제 값 자동완성 드롭다운은 미구현(후속 작업).
 
 **응답 200:** `{ issues: IssueListItem[], nextCursor: string | null }`
 

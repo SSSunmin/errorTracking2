@@ -17,6 +17,14 @@ export const eventSnapshotParamsSchema = issueParamsSchema.extend({
 export const listIssuesQuerySchema = z
   .object({
     status: issueStatusSchema.optional(),
+    level: issueLevelSchema.optional(),
+    // release/environment live on Event, not Issue: these match issues that have
+    // at least one event in the given release/environment (events.some).
+    release: z.string().min(1).max(256).optional(),
+    environment: z.string().min(1).max(256).optional(),
+    // Inclusive window on the issue's lastSeen (ISO timestamps).
+    since: z.coerce.date().optional(),
+    until: z.coerce.date().optional(),
     query: z.string().min(1).optional(),
     sort: z.enum(["lastSeen", "firstSeen", "timesSeen"]).default("lastSeen"),
     limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -26,6 +34,10 @@ export const listIssuesQuerySchema = z
   .refine((query) => query.cursor !== undefined || query.page * query.limit <= maxPaginationOffset, {
     message: "Pagination offset is too large",
     path: ["page"]
+  })
+  .refine((query) => query.since === undefined || query.until === undefined || query.since <= query.until, {
+    message: "since must not be after until",
+    path: ["since"]
   });
 
 export const listEventsQuerySchema = z

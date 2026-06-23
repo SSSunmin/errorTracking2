@@ -2,13 +2,27 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { api, type IssueStatus } from "../api";
+import { api, type IssueLevel, type IssueStatus } from "../api";
 import { LevelBadge, relativeTime, Spinner, StatusBadge } from "../components";
-import { statusLabels } from "../labels";
+import { levelLabels, statusLabels } from "../labels";
+
+// A date input gives the user's local YYYY-MM-DD; expand it to an inclusive
+// day boundary as a UTC instant so the lastSeen window covers exactly the local
+// day picked. `new Date("YYYY-MM-DDThh:mm:ss")` (no zone) parses as local time,
+// then toISOString() converts to the matching UTC instant the server compares.
+const dayStartIso = (day: string): string | undefined =>
+  day === "" ? undefined : new Date(`${day}T00:00:00.000`).toISOString();
+const dayEndIso = (day: string): string | undefined =>
+  day === "" ? undefined : new Date(`${day}T23:59:59.999`).toISOString();
 
 export const IssuesPage = (): ReactNode => {
   const { projectId = "" } = useParams();
   const [status, setStatus] = useState<IssueStatus | "">("");
+  const [level, setLevel] = useState<IssueLevel | "">("");
+  const [environment, setEnvironment] = useState("");
+  const [release, setRelease] = useState("");
+  const [since, setSince] = useState("");
+  const [until, setUntil] = useState("");
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("lastSeen");
@@ -18,10 +32,26 @@ export const IssuesPage = (): ReactNode => {
     queryFn: () => api.getProject(projectId)
   });
   const issues = useQuery({
-    queryKey: ["issues", projectId, status, query, sort],
+    queryKey: [
+      "issues",
+      projectId,
+      status,
+      level,
+      environment,
+      release,
+      since,
+      until,
+      query,
+      sort
+    ],
     queryFn: () =>
       api.listIssues(projectId, {
         status: status === "" ? undefined : status,
+        level: level === "" ? undefined : level,
+        environment: environment.trim() === "" ? undefined : environment.trim(),
+        release: release.trim() === "" ? undefined : release.trim(),
+        since: dayStartIso(since),
+        until: dayEndIso(until),
         query: query === "" ? undefined : query,
         sort
       })
@@ -48,6 +78,49 @@ export const IssuesPage = (): ReactNode => {
           <option value="resolved">{statusLabels.resolved}</option>
           <option value="ignored">{statusLabels.ignored}</option>
         </select>
+        <select
+          value={level}
+          onChange={(e) => {
+            setLevel(e.target.value as IssueLevel | "");
+          }}
+        >
+          <option value="">전체 레벨</option>
+          <option value="debug">{levelLabels.debug}</option>
+          <option value="info">{levelLabels.info}</option>
+          <option value="warning">{levelLabels.warning}</option>
+          <option value="error">{levelLabels.error}</option>
+          <option value="fatal">{levelLabels.fatal}</option>
+        </select>
+        <input
+          placeholder="환경"
+          value={environment}
+          onChange={(e) => {
+            setEnvironment(e.target.value);
+          }}
+        />
+        <input
+          placeholder="릴리스"
+          value={release}
+          onChange={(e) => {
+            setRelease(e.target.value);
+          }}
+        />
+        <input
+          type="date"
+          aria-label="시작일 (마지막 발생)"
+          value={since}
+          onChange={(e) => {
+            setSince(e.target.value);
+          }}
+        />
+        <input
+          type="date"
+          aria-label="종료일 (마지막 발생)"
+          value={until}
+          onChange={(e) => {
+            setUntil(e.target.value);
+          }}
+        />
         <select
           value={sort}
           onChange={(e) => {

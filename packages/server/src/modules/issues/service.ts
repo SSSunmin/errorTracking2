@@ -201,10 +201,25 @@ export const listIssues = async (
 ): Promise<{ issues: IssueListItemDto[]; nextCursor: string | null }> => {
   await ensureOwnedProject(ownerId, projectId);
 
+  // release/environment are Event fields, so match issues that have at least one
+  // event in that release/environment. Combined into one `some` so both, when
+  // given, must be satisfied by the same event.
+  const eventFilter: Prisma.EventWhereInput = {
+    ...(query.release !== undefined ? { release: query.release } : {}),
+    ...(query.environment !== undefined ? { environment: query.environment } : {})
+  };
+  const lastSeenFilter: Prisma.DateTimeFilter = {
+    ...(query.since !== undefined ? { gte: query.since } : {}),
+    ...(query.until !== undefined ? { lte: query.until } : {})
+  };
+
   const issues = await prisma.issue.findMany({
     where: {
       projectId,
       ...(query.status !== undefined ? { status: query.status } : {}),
+      ...(query.level !== undefined ? { level: query.level } : {}),
+      ...(Object.keys(eventFilter).length > 0 ? { events: { some: eventFilter } } : {}),
+      ...(Object.keys(lastSeenFilter).length > 0 ? { lastSeen: lastSeenFilter } : {}),
       ...(query.query !== undefined
         ? {
             title: {
