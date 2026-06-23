@@ -246,12 +246,22 @@ export const api = {
     projectId: string,
     params: {
       status?: IssueStatus | undefined;
+      level?: IssueLevel | undefined;
+      release?: string | undefined;
+      environment?: string | undefined;
+      since?: string | undefined;
+      until?: string | undefined;
       query?: string | undefined;
       sort?: string | undefined;
     }
   ): Promise<{ issues: IssueListItem[]; nextCursor: string | null }> => {
     const search = new URLSearchParams();
     if (params.status) search.set("status", params.status);
+    if (params.level) search.set("level", params.level);
+    if (params.release) search.set("release", params.release);
+    if (params.environment) search.set("environment", params.environment);
+    if (params.since) search.set("since", params.since);
+    if (params.until) search.set("until", params.until);
     if (params.query) search.set("query", params.query);
     if (params.sort) search.set("sort", params.sort);
     const qs = search.toString();

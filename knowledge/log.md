@@ -2,6 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P3 이슈 검색/필터 강화 — feat/retention-pruning)
+- **이슈 API(`api/issues-api`)**: `GET /:id/issues` 쿼리 파라미터에 신규 필터 4종 추가 반영. `level`(Issue.level 완전일치), `release`/`environment`(Event 관계 기반 `some` 매칭 — 동시 지정 시 같은 이벤트 하나가 양쪽 충족 필요), `since`/`until`(Issue.lastSeen inclusive 범위, `since > until`이면 400). 필터 의미론 절 신규(각 필터 구현 방식 명시). 알려진 한계 2종 추가: Event.release·environment 전용 인덱스 없음(대용량 시 추가 권고), release/environment 자동완성 미구현(자유 텍스트 입력).
+- **index.md**: 이슈 API 항목 설명에 신규 필터 명시.
+
 ## 2026-06-23 (P2 소스맵 정밀 매칭·메모리 바운딩·DELETE API — feat/sourcemap-precision-delete)
 - **소스맵 API(`api/sourcemaps-api`)**: 세 가지 변경을 반영해 전면 갱신. (1) **경로 접미사 매칭**: 업로드 시 `canonicalArtifactName`으로 `--dir` 기준 상대 경로를 저장 키로 사용(`basename` → `assets/routes/index.js`). 심볼리케이션은 `resolveTracerName`(longest-suffix wins)으로 프레임 URL과 대조 — `routes/index.js` vs `utils/index.js` 충돌 해소, basename-only 키는 하위 호환. (2) **2단계 메모리 바운딩**: `loadSourceMapsByName`이 filename 컬럼만 먼저 SELECT하고 `referencedBasenames`와 교차한 뒤, 참조된 행의 `data` blob만 두 번째 쿼리로 로드. 미참조 맵은 메모리에 올라오지 않음. (3) **DELETE 엔드포인트 신규**: `DELETE /:id/releases/:release/sourcemaps?filename=` — filename 있으면 단일 artifact, 없으면 릴리스 전체 삭제. 삭제 row > 0이면 `Event.symbolicated` 무효화. 응답 `{ deleted: number }`. (4) **업로드 CLI**: `--dir` 기준 상대 경로를 `?filename=`으로 전송하도록 변경(`node:path relative()` + POSIX 슬래시). (5) **알려진 한계 갱신**: 한계 #1(basename 충돌) → 해결됨·잔여 주의점 재기술, 한계 #2(전량 메모리 로드) → 완화됨·잔여 주의점 재기술.
 - **index.md**: 소스맵 API 항목 설명 갱신(DELETE·경로 접미사 매칭·2단계 바운딩 명시).
