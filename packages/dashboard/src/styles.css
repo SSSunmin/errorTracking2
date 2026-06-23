@@ -178,6 +178,10 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 }
 .modal h3 { margin: 0; }
 .modal code { font-family: ui-monospace, monospace; word-break: break-all; }
+/* Stacked form inside a modal: label above a full-width input, action right-aligned. */
+.modal-form { display: flex; flex-direction: column; gap: 0.4rem; }
+.modal-form label { margin-bottom: 0.1rem; }
+.modal-actions { display: flex; justify-content: flex-end; margin-top: 0.4rem; }
 
 .event-nav-head { align-items: flex-start; flex-wrap: wrap; }
 .event-nav-head h3 { margin: 0; }

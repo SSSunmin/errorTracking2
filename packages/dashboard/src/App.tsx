@@ -88,7 +88,7 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
         </dl>
 
         <form
-          className="form-grid"
+          className="modal-form"
           onSubmit={(event) => {
             event.preventDefault();
             void save();
@@ -107,10 +107,12 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
               setName(event.target.value);
             }}
           />
-          <button type="submit" className="primary" disabled={busy}>
-            저장
-          </button>
           {error && <span className="error small">{error}</span>}
+          <div className="modal-actions">
+            <button type="submit" className="primary" disabled={busy}>
+              저장
+            </button>
+          </div>
         </form>
       </div>
     </div>
