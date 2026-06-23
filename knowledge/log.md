@@ -2,6 +2,12 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P1 배포 계층 보안 하드닝 — feat/replay-deploy-hardening)
+- **개념 신규(`ops/deployment`)**: 운영 배포 스택 문서화. 서비스 구성표(postgres/redis/migrate/server/worker/caddy, 외부 노출은 Caddy 80/443만, 이미지 1개 공유), 두 오리진(`{$DASHBOARD_DOMAIN}` SPA+`/api` 프록시 / `{$REPLAY_DOMAIN}` 격리 정적+`frame-ancestors` CSP), 보안 근거(별도 오리진·frame-ancestors는 `<meta>` 불가→Caddy 헤더), 기동/마이그레이션(1회성 `migrate` 서비스 `prisma migrate deploy`→server/worker `service_completed_successfully` 대기)/TLS(운영 자동 vs Cloudflare Tunnel), env(`VITE_REPLAY_ORIGIN`은 빌드 ARG), 한계(SDK 서빙 제외·node_modules 통째 복사) 명시.
+- **백로그(`roadmap/backlog`)**: P1 "남은 follow-up — 배포 계층"을 완료로 갱신(frame-ancestors·replay 서브도메인·운영 compose 3종 코드화, `ops/deployment` 링크).
+- **index.md**: 설정/운영 섹션에 `ops/deployment` 항목 추가.
+- **코드(지식 외)**: `packages/server/Dockerfile`(멀티스테이지, server/worker/migrate 공유), `deploy/Dockerfile.dashboard`(Vite→Caddy, `VITE_REPLAY_ORIGIN` ARG), `deploy/Caddyfile`(2 오리진·frame-ancestors·Tunnel 주석), `docker-compose.prod.yml`, `.env.prod.example` 신규. `.gitignore`에 `.env.prod` 추가, `packages/dashboard/.env.example` 주석에 deploy/ 참고 한 줄.
+
 ## 2026-06-24 (프로젝트 설정·DSN 키 owner-role 게이팅 — feat/dashboard-ux-profile, PR #18 리뷰 반영)
 - **접근제어 강화**: `updateProject`·`createProjectKey`·`rotateProjectKey`·`updateProjectKey`를 멤버십 검사(아무 member) → **owner 역할 전용**(`getAdminProject` 신규 헬퍼)으로 전환. 멤버 관리(owner-only)와 정책 일치. 비멤버 404·비owner 멤버 403. 읽기(GET project/keys/members)와 이슈 작업은 멤버 그대로.
 - **프로젝트 API(`api/projects-api`)**: 접근제어 절 + PATCH/:id·키 변경 3종에 owner-role 전용 명시. (기존 문서의 "프로젝트 삭제 404" 오기 → 코드·테스트대로 **403** 정정.)

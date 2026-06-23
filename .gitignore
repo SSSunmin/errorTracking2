@@ -4,6 +4,7 @@ dist/
 coverage/
 .claude/settings.local.json
 .env
+.env.prod
 *.tsbuildinfo
 *.log
 .DS_Store

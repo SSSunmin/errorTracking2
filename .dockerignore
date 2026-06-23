@@ -1,0 +1,17 @@
+# Keep the build context small and avoid host artifacts. Dockerfiles run
+# `npm ci` and build inside the image, so none of these are needed in context.
+**/node_modules
+**/dist
+**/coverage
+**/*.tsbuildinfo
+.git
+.github
+.claude
+.tools
+*.log
+*.stackdump
+.env
+.env.*
+docs
+examples/demo-app/dist
+knowledge

@@ -1,0 +1,32 @@
+# Builds the dashboard (Vite, two HTML entries: index.html + replay-viewer.html)
+# and serves the static bundle with Caddy. Build context = repo root.
+#   docker build -f deploy/Dockerfile.dashboard \
+#     --build-arg VITE_REPLAY_ORIGIN=https://replay.example.com \
+#     -t mini-sentry-dashboard .
+# VITE_REPLAY_ORIGIN is a BUILD-TIME var (Vite inlines VITE_* into the bundle),
+# so it must arrive as a build ARG — setting it at container runtime has no effect.
+
+# ── build stage ────────────────────────────────────────────────────────────
+FROM node:20-alpine AS build
+WORKDIR /app
+
+COPY package.json package-lock.json ./
+COPY packages/server/package.json packages/server/
+COPY packages/dashboard/package.json packages/dashboard/
+COPY packages/sdk/package.json packages/sdk/
+COPY examples/demo-app/package.json examples/demo-app/
+RUN npm ci
+
+COPY . .
+ARG VITE_REPLAY_ORIGIN
+# Fail loudly if empty: a blank value silently falls back to in-page rendering on
+# the dashboard origin (no isolation) — a security downgrade that must not ship.
+RUN test -n "$VITE_REPLAY_ORIGIN" || \
+	(echo "ERROR: VITE_REPLAY_ORIGIN must be set for prod builds (e.g. https://replay.example.com)" && exit 1)
+ENV VITE_REPLAY_ORIGIN=${VITE_REPLAY_ORIGIN}
+RUN npm run build -w @mini-sentry/dashboard
+
+# ── serve stage (Caddy) ──────────────────────────────────────────────────────
+FROM caddy:2-alpine
+COPY --from=build /app/packages/dashboard/dist /srv
+COPY deploy/Caddyfile /etc/caddy/Caddyfile

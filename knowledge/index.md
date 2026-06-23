@@ -40,6 +40,7 @@
 - [환경설정 (env)](/config/environment.md) — DB·JWT·포트·CORS·DSN 변수
 - [운영 런북](/ops/runbook.md) — 셋업·인프라·검증 명령
 - [데이터 보존/정리 (Retention)](/ops/retention.md) — Event/Snapshot/Replay 주기 배치 삭제(BullMQ 잡·env·인덱스)
+- [운영 배포 (Docker Compose + Caddy)](/ops/deployment.md) — 운영 스택·리플레이 오리진 격리·frame-ancestors CSP·마이그레이션·TLS
 
 ### 결정
 - [설계 결정 기록 (ADR-lite)](/decisions/decisions.md) — 주요 선택과 이유
