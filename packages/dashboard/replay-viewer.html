@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <!-- Defense-in-depth behind the separate origin: no scripts but our own
+         bundle, no network egress (data arrives via postMessage), no plugins.
+         Passive subresources stay permissive to preserve replay fidelity.
+         NOTE: frame-ancestors cannot be set via <meta> — it must be added as a
+         response header at the serving layer (Caddy) to lock which origins may
+         embed this viewer. Tracked as the deployment follow-up. -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'none'; script-src 'self'; style-src * 'unsafe-inline'; img-src * data: blob:; font-src * data:; media-src * data: blob:; frame-src 'self' blob: data:; connect-src 'none'; base-uri 'none'; form-action 'none'"
+    />
+    <title>Replay Viewer</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        background: transparent;
+        font: 13px/1.4 system-ui, sans-serif;
+      }
+      #viewer-stage {
+        width: 100%;
+        overflow: hidden;
+      }
+      #viewer-control {
+        margin: 6px 0 0;
+        padding: 2px 10px;
+        font: inherit;
+        cursor: pointer;
+        background: none;
+        border: 1px solid currentColor;
+        border-radius: 4px;
+        color: inherit;
+        opacity: 0.75;
+      }
+      #viewer-control:hover {
+        opacity: 1;
+      }
+      #viewer-fallback {
+        margin: 6px 0 0;
+        opacity: 0.6;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="viewer-root">
+      <div id="viewer-stage"></div>
+      <button id="viewer-control" type="button" hidden></button>
+      <p id="viewer-fallback" hidden></p>
+    </div>
+    <script type="module" src="/src/replay-viewer/main.ts"></script>
+  </body>
+</html>
