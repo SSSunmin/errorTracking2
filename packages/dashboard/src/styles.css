@@ -61,6 +61,20 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.ghost { background: transparent; }
 button.danger:hover { border-color: var(--error); color: var(--error); }
 
+/* Nav links styled as ghost buttons (e.g. 멤버 / 알림 규칙 in the page head),
+   so anchors match the <button> ghost look instead of rendering as bare links. */
+a.ghost {
+  display: inline-block;
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  padding: 0.5rem 0.85rem;
+  text-decoration: none;
+}
+a.ghost:hover { border-color: var(--accent); }
+
 input, select {
   font: inherit;
   background: var(--bg);
@@ -70,6 +84,9 @@ input, select {
   padding: 0.5rem 0.6rem;
 }
 input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Dark mode: tell the browser to render native control chrome (the date input's
+   calendar-picker icon, spin buttons) light so it's visible on the dark field. */
+.dark input[type="date"] { color-scheme: dark; }
 
 .topbar {
   display: flex;
@@ -132,7 +149,9 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
   padding: 1rem 1.15rem;
 }
 .card.success { border-color: var(--ok); }
-.card.row { display: flex; align-items: center; justify-content: space-between; }
+/* Inline cluster of controls/links with spacing so they don't run together. */
+.row { display: flex; align-items: center; gap: 0.5rem; }
+.card.row { justify-content: space-between; }
 .card-head { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
 .event-nav-head { align-items: flex-start; flex-wrap: wrap; }
 .event-nav-head h3 { margin: 0; }

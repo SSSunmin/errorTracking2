@@ -15,6 +15,7 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -60,6 +61,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }): ReactNode =
         await api.logout().catch(() => undefined);
         setAccessToken(null);
         setUser(null);
+      },
+      updateProfile: async (name) => {
+        const updated = await api.updateProfile(name);
+        setUser(updated);
       }
     }),
     [user, loading]

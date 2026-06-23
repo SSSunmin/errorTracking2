@@ -11,6 +11,10 @@ export const loginSchema = z.object({
   password: z.string().min(1)
 });
 
+export const updateProfileSchema = z.object({
+  name: z.string().trim().min(1).max(120)
+});
+
 export const userResponseSchema = z.object({
   id: z.string(),
   email: z.string(),
@@ -29,3 +33,4 @@ export const okResponseSchema = z.object({
 
 export type RegisterInput = z.infer<typeof registerSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;
+export type UpdateProfileInput = z.infer<typeof updateProfileSchema>;

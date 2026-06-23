@@ -9,13 +9,15 @@ import {
   loginUser,
   registerUser,
   revokeRefreshToken,
-  rotateRefreshToken
+  rotateRefreshToken,
+  updateProfile
 } from "./service.js";
 import {
   loginSchema,
   okResponseSchema,
   registerSchema,
   tokenResponseSchema,
+  updateProfileSchema,
   userResponseSchema
 } from "./schemas.js";
 
@@ -164,6 +166,20 @@ export const authRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
       }
     },
     async (request) => getCurrentUser(getUserId(request))
+  );
+
+  app.patch(
+    "/me",
+    {
+      preHandler: app.requireAuth,
+      schema: {
+        body: updateProfileSchema,
+        response: {
+          200: userResponseSchema
+        }
+      }
+    },
+    async (request) => updateProfile(getUserId(request), request.body)
   );
 
   done();

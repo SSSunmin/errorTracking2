@@ -254,6 +254,8 @@ export const api = {
     }),
   logout: (): Promise<{ ok: boolean }> =>
     request("/api/auth/logout", { method: "POST", retry: false }),
+  updateProfile: (name: string): Promise<User> =>
+    request("/api/auth/me", { method: "PATCH", body: { name } }),
 
   listProjects: (): Promise<{ projects: ProjectListItem[] }> =>
     request("/api/projects"),

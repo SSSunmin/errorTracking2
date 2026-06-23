@@ -10,7 +10,7 @@ import {
   verifyPassword
 } from "../../lib/tokens.js";
 import { conflict, unauthorized } from "../../lib/errors.js";
-import type { LoginInput, RegisterInput } from "./schemas.js";
+import type { LoginInput, RegisterInput, UpdateProfileInput } from "./schemas.js";
 
 const userSelect = {
   id: true,
@@ -125,6 +125,31 @@ export const getCurrentUser = async (userId: string): Promise<PublicUserDto> => 
   }
 
   return toPublicUser(user);
+};
+
+export const updateProfile = async (
+  userId: string,
+  input: UpdateProfileInput
+): Promise<PublicUserDto> => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name: input.name },
+      select: userSelect
+    });
+
+    return toPublicUser(user);
+  } catch (error) {
+    // Stale token for a since-deleted user → treat as invalid (like getCurrentUser)
+    // rather than surfacing a 500.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw unauthorized("Invalid access token");
+    }
+    throw error;
+  }
 };
 
 export const rotateRefreshToken = async (
