@@ -36,12 +36,14 @@ export interface SourceMapSummaryDto {
   updatedAt: string;
 }
 
+// Membership-based access: `ownerId` is the current user id; any project member
+// may manage the project's source maps.
 const ensureOwnedProject = async (
   ownerId: string,
   projectId: string
 ): Promise<void> => {
   const project = await prisma.project.findFirst({
-    where: { id: projectId, ownerId },
+    where: { id: projectId, members: { some: { userId: ownerId } } },
     select: { id: true }
   });
 

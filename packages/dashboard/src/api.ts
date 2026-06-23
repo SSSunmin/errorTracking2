@@ -123,6 +123,16 @@ export interface AlertRule {
   updatedAt: string;
 }
 
+export type ProjectRole = "owner" | "member";
+
+export interface ProjectMember {
+  userId: string;
+  email: string;
+  name: string | null;
+  role: ProjectRole;
+  createdAt: string;
+}
+
 export class ApiError extends Error {
   public constructor(
     public readonly status: number,
@@ -241,6 +251,31 @@ export const api = {
     request(`/api/projects/${id}`, { method: "DELETE" }),
   listKeys: (projectId: string): Promise<{ keys: ProjectKey[] }> =>
     request(`/api/projects/${projectId}/keys`),
+
+  listMembers: (projectId: string): Promise<{ members: ProjectMember[] }> =>
+    request(`/api/projects/${projectId}/members`),
+  addMember: (
+    projectId: string,
+    email: string,
+    role?: ProjectRole
+  ): Promise<{ member: ProjectMember }> =>
+    request(`/api/projects/${projectId}/members`, {
+      method: "POST",
+      body: role ? { email, role } : { email }
+    }),
+  updateMemberRole: (
+    projectId: string,
+    userId: string,
+    role: ProjectRole
+  ): Promise<{ member: ProjectMember }> =>
+    request(`/api/projects/${projectId}/members/${userId}`, {
+      method: "PATCH",
+      body: { role }
+    }),
+  removeMember: (projectId: string, userId: string): Promise<void> =>
+    request(`/api/projects/${projectId}/members/${userId}`, {
+      method: "DELETE"
+    }),
 
   listIssues: (
     projectId: string,

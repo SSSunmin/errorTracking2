@@ -8,6 +8,7 @@ import { AlertsPage } from "./pages/AlertsPage";
 import { IssueDetailPage } from "./pages/IssueDetailPage";
 import { IssuesPage } from "./pages/IssuesPage";
 import { LoginPage } from "./pages/LoginPage";
+import { MembersPage } from "./pages/MembersPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
 
 const Layout = ({ children }: { children: ReactNode }): ReactNode => {
@@ -65,6 +66,7 @@ export const App = (): ReactNode => {
           element={<IssueDetailPage />}
         />
         <Route path="/projects/:projectId/alerts" element={<AlertsPage />} />
+        <Route path="/projects/:projectId/members" element={<MembersPage />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

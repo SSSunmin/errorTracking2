@@ -45,6 +45,8 @@ const toAlertRuleDto = (rule: AlertRule): AlertRuleDto => ({
 
 const MAX_ALERT_RULES_PER_PROJECT = 50;
 
+// Membership-based access: `ownerId` is the current user id; any project member
+// may manage the project's alert rules.
 const ensureOwnedProject = async (
   ownerId: string,
   projectId: string
@@ -52,7 +54,7 @@ const ensureOwnedProject = async (
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
-      ownerId
+      members: { some: { userId: ownerId } }
     },
     select: { id: true }
   });
@@ -188,10 +190,10 @@ export const createAlertRule = async (
         windowMinutes: parsed.windowMinutes,
         cooldownMinutes: parsed.cooldownMinutes,
         isActive: parsed.isActive,
+        // Membership already verified by ensureOwnedProject above.
         project: {
           connect: {
-            id: projectId,
-            ownerId
+            id: projectId
           }
         }
       }
@@ -219,7 +221,7 @@ export const getAlertRule = async (
       id: ruleId,
       projectId,
       project: {
-        ownerId
+        members: { some: { userId: ownerId } }
       }
     }
   });
@@ -246,7 +248,7 @@ export const updateAlertRule = async (
           id: ruleId,
           projectId,
           project: {
-            ownerId
+            members: { some: { userId: ownerId } }
           }
         }
       });
@@ -263,13 +265,8 @@ export const updateAlertRule = async (
       });
 
       return tx.alertRule.update({
-        where: {
-          id: ruleId,
-          projectId,
-          project: {
-            ownerId
-          }
-        },
+        // Membership already verified by findFirstOrThrow above (same tx).
+        where: { id: ruleId },
         data: parsed
       });
     });
@@ -291,14 +288,14 @@ export const deleteAlertRule = async (
   projectId: string,
   ruleId: string
 ): Promise<void> => {
+  // Any member may delete alert rules; prove membership, then delete by id.
+  await ensureOwnedProject(ownerId, projectId);
+
   try {
     await prisma.alertRule.delete({
       where: {
         id: ruleId,
-        projectId,
-        project: {
-          ownerId
-        }
+        projectId
       }
     });
   } catch (error) {

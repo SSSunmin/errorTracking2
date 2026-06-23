@@ -17,11 +17,19 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 
 ### User — 계정
 `id` · `email`(unique) · `passwordHash` · `name?` · `createdAt` · `updatedAt`
-관계: `projects[]`, `refreshTokens[]`
+관계: `projects[]`(소유), `memberships[]`(ProjectMember), `refreshTokens[]`
 
 ### Project — 모니터링 대상 프로젝트
 `id` · `name` · `slug`(unique) · `platform`(기본 `javascript-browser`) · `ownerId` → User(onDelete: Cascade) · `createdAt` · `updatedAt`
-관계: `keys[]`, `issues[]`, `events[]`, `alertRules[]`, `sourceMaps[]` / 인덱스: `@@index([ownerId])`
+관계: `keys[]`, `issues[]`, `events[]`, `alertRules[]`, `sourceMaps[]`, `members[]`(ProjectMember) / 인덱스: `@@index([ownerId])`
+
+> `ownerId`는 **소유자 포인터**(항상 ProjectMember에 role=owner로도 존재). 접근제어 자체는 멤버십 기반(아래 ProjectMember 참고). 마이그레이션: `20260623120000_project_membership`(소유자 백필 포함).
+
+### ProjectMember — 프로젝트 멤버십(팀/접근제어, P3)
+`id` · `projectId` → Project(onDelete: Cascade) · `userId` → User(onDelete: Cascade) · `role`(ProjectRole, 기본 member) · `createdAt`
+제약: `@@unique([projectId, userId])` / 인덱스: `@@index([userId])`
+
+> 접근제어의 단위. **멤버(owner|member)면 그 프로젝트의 모든 기존 기능**(프로젝트/이슈/이벤트/스냅샷/리플레이/통계/소스맵/알림/키)에 읽기·쓰기 가능. 4개 서비스(`projects`/`issues`/`sourcemaps`/`alert-rules`)의 접근 헬퍼가 `members: { some: { userId } }`로 검사한다. **owner 전용**: (1) 프로젝트 삭제(`Project.ownerId`로 한정), (2) 멤버 관리(추가/역할변경/삭제 — `userId === Project.ownerId` 판정). 소유자는 강등·제거 불가. 마이그레이션: `20260623120000_project_membership`.
 
 ### ProjectKey — 인제스트용 공개키(DSN의 기반)
 `id` · `projectId` → Project(Cascade) · `publicKey`(unique) · `label?` · `isActive`(기본 true) · `lastUsedAt?` · `createdAt`
@@ -83,6 +91,7 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 - `AlertChannel`: email · slack
 - `AlertCondition`: new_issue · regression · event_threshold
 - `NotificationStatus`: pending · sent · failed
+- `ProjectRole`: owner · member
 
 ## 관련 개념
 - [프로젝트 개요](/overview/mini-sentry.md) · [프로젝트 API](/api/projects-api.md) · [인증 API](/api/auth-api.md) · [이슈 API](/api/issues-api.md) · [인제스트 API](/api/ingest-api.md) · [소스맵 API](/api/sourcemaps-api.md)

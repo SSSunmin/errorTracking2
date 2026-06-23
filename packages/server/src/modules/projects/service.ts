@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 
 import { Prisma, type Project, type ProjectKey } from "@prisma/client";
 
-import { conflict, notFound } from "../../lib/errors.js";
+import { conflict, forbidden, notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { buildDsn } from "../keys/dsn.js";
 import type {
@@ -116,6 +116,9 @@ const getUniqueSlug = async (baseValue: string): Promise<string> => {
   return `${baseSlug}-${randomBytes(4).toString("hex")}`;
 };
 
+// Membership-based access: `ownerId` is the current user id; any project member
+// (owner or member role) may read/write the project. Returns notFound for
+// non-members so existence isn't leaked.
 const getOwnedProject = async (
   projectId: string,
   ownerId: string
@@ -123,7 +126,7 @@ const getOwnedProject = async (
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
-      ownerId
+      members: { some: { userId: ownerId } }
     }
   });
 
@@ -159,7 +162,8 @@ export const listProjects = async (
   ownerId: string
 ): Promise<{ projects: ProjectListItemDto[] }> => {
   const projects = await prisma.project.findMany({
-    where: { ownerId },
+    // Every project the current user is a member of (owner role included).
+    where: { members: { some: { userId: ownerId } } },
     include: {
       _count: {
         select: {
@@ -192,6 +196,12 @@ export const createProject = async (
           slug,
           platform: input.platform ?? defaultPlatform,
           ownerId,
+          members: {
+            create: {
+              userId: ownerId,
+              role: "owner"
+            }
+          },
           keys: {
             create: {
               publicKey: randomPublicKey(),
@@ -243,40 +253,38 @@ export const updateProject = async (
   projectId: string,
   input: UpdateProjectInput
 ): Promise<{ project: ProjectDto }> => {
-  try {
-    const project = await prisma.project.update({
-      where: {
-        id: projectId,
-        ownerId
-      },
-      data: {
-        ...(input.name !== undefined ? { name: input.name } : {}),
-        ...(input.platform !== undefined ? { platform: input.platform } : {})
-      }
-    });
+  // Any member may update; prove membership first, then update by id (Prisma's
+  // update `where` can't take a relation filter).
+  await getOwnedProject(projectId, ownerId);
 
-    return {
-      project: toProjectDto(project)
-    };
-  } catch (error) {
-    if (isRecordNotFoundError(error)) {
-      throw notFound("Project not found");
+  const project = await prisma.project.update({
+    where: { id: projectId },
+    data: {
+      ...(input.name !== undefined ? { name: input.name } : {}),
+      ...(input.platform !== undefined ? { platform: input.platform } : {})
     }
+  });
 
-    throw error;
-  }
+  return {
+    project: toProjectDto(project)
+  };
 };
 
 export const deleteProject = async (
   ownerId: string,
   projectId: string
 ): Promise<void> => {
+  // Founder-only: any member sees the project (getOwnedProject → 404 for
+  // non-members), but only Project.ownerId may delete it (403 for other members)
+  // — consistent with GET returning 200 for the same member.
+  const project = await getOwnedProject(projectId, ownerId);
+  if (project.ownerId !== ownerId) {
+    throw forbidden("Only the project owner can delete this project");
+  }
+
   try {
     await prisma.project.delete({
-      where: {
-        id: projectId,
-        ownerId
-      }
+      where: { id: projectId }
     });
   } catch (error) {
     if (isRecordNotFoundError(error)) {
@@ -362,14 +370,14 @@ export const updateProjectKey = async (
   keyId: string,
   input: UpdateProjectKeyInput
 ): Promise<{ key: ProjectKeyDto; dsn: string }> => {
+  // Any member may update keys; prove membership, then update by id + project.
+  await getOwnedProject(projectId, ownerId);
+
   try {
     const key = await prisma.projectKey.update({
       where: {
         id: keyId,
-        projectId,
-        project: {
-          ownerId
-        }
+        projectId
       },
       data: {
         isActive: input.isActive

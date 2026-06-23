@@ -20,12 +20,12 @@
 - [대시보드](/architecture/dashboard.md) — React 대시보드 구조·라우트·상태 관리
 
 ### 데이터
-- [데이터 모델 (Prisma / PostgreSQL)](/database/data-model.md) — 11개 모델·관계·인덱스·enum (SourceMap + Event.symbolicated 추가)
+- [데이터 모델 (Prisma / PostgreSQL)](/database/data-model.md) — 12개 모델·관계·인덱스·enum (ProjectMember/ProjectRole 멤버십 추가)
 - [ERD](/database/erd.md) — 엔티티 관계도(Mermaid, SourceMap 포함)
 
 ### API
 - [인증 API](/api/auth-api.md) — register / login / refresh / logout / me
-- [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD
+- [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD·멤버 관리(멤버십 기반 접근제어)
 - [인제스트 API](/api/ingest-api.md) — POST /:projectId/store 이벤트 수집
 - [이슈 API](/api/issues-api.md) — 이슈 목록·상세·상태 변경 (level/release/environment/since/until 필터, hasReplay, 심볼리케이션 포함)
 - [세션 리플레이 API](/api/replay-api.md) — 리플레이 업로드(DSN 인증) + 조회(JWT 인증)

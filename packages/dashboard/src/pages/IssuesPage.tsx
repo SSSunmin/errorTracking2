@@ -61,9 +61,14 @@ export const IssuesPage = (): ReactNode => {
     <div className="page">
       <div className="page-head">
         <h2>{project.data?.project.name ?? "이슈"}</h2>
-        <Link className="ghost" to={`/projects/${projectId}/alerts`}>
-          알림 규칙
-        </Link>
+        <div className="row">
+          <Link className="ghost" to={`/projects/${projectId}/members`}>
+            멤버
+          </Link>
+          <Link className="ghost" to={`/projects/${projectId}/alerts`}>
+            알림 규칙
+          </Link>
+        </div>
       </div>
 
       <div className="filters">

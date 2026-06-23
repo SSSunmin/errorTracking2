@@ -152,6 +152,8 @@ const toEventDetail = (
     event.clientEventId != null && replayClientEventIds.has(event.clientEventId)
 });
 
+// Membership-based access: `ownerId` is the current user id; any project member
+// may access the project's issues/events.
 const ensureOwnedProject = async (
   ownerId: string,
   projectId: string
@@ -159,7 +161,7 @@ const ensureOwnedProject = async (
   const project = await prisma.project.findFirst({
     where: {
       id: projectId,
-      ownerId
+      members: { some: { userId: ownerId } }
     },
     select: { id: true }
   });
@@ -179,7 +181,7 @@ const ensureOwnedIssue = async (
       id: issueId,
       projectId,
       project: {
-        ownerId
+        members: { some: { userId: ownerId } }
       }
     }
   });
@@ -190,9 +192,6 @@ const ensureOwnedIssue = async (
 
   return issue;
 };
-
-const isRecordNotFoundError = (error: unknown): boolean =>
-  error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2025";
 
 export const listIssues = async (
   ownerId: string,
@@ -434,28 +433,17 @@ export const updateIssueStatus = async (
   issueId: string,
   input: UpdateIssueInput
 ): Promise<{ issue: IssueListItemDto }> => {
-  try {
-    const issue = await prisma.issue.update({
-      where: {
-        id: issueId,
-        projectId,
-        project: {
-          ownerId
-        }
-      },
-      data: {
-        status: input.status as IssueStatus
-      }
-    });
+  // Any member may change issue status; prove membership, then update by id.
+  await ensureOwnedIssue(ownerId, projectId, issueId);
 
-    return {
-      issue: toIssueListItem(issue)
-    };
-  } catch (error) {
-    if (isRecordNotFoundError(error)) {
-      throw notFound("Issue not found");
+  const issue = await prisma.issue.update({
+    where: { id: issueId },
+    data: {
+      status: input.status as IssueStatus
     }
+  });
 
-    throw error;
-  }
+  return {
+    issue: toIssueListItem(issue)
+  };
 };

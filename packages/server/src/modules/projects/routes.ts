@@ -6,6 +6,12 @@ import { alertRuleRoutes } from "../alert-rules/routes.js";
 import { issueRoutes } from "../issues/routes.js";
 import { sourceMapRoutes } from "../sourcemaps/routes.js";
 import {
+  addMember,
+  listMembers,
+  removeMember,
+  updateMemberRole
+} from "./members.service.js";
+import {
   createProject,
   createProjectKey,
   deleteProject,
@@ -17,15 +23,20 @@ import {
   updateProjectKey
 } from "./service.js";
 import {
+  addMemberSchema,
   createProjectKeySchema,
   createProjectResponseSchema,
   createProjectSchema,
+  listMembersResponseSchema,
   listProjectKeysResponseSchema,
   listProjectsResponseSchema,
+  memberParamsSchema,
+  memberResponseSchema,
   projectKeyParamsSchema,
   projectKeyResponseSchema,
   projectParamsSchema,
   projectResponseSchema,
+  updateMemberSchema,
   updateProjectKeySchema,
   updateProjectSchema
 } from "./schemas.js";
@@ -184,6 +195,79 @@ export const projectRoutes: FastifyPluginCallbackZod = (app, _options, done) => 
         request.params.keyId,
         request.body
       )
+  );
+
+  app.get(
+    "/:id/members",
+    {
+      schema: {
+        params: projectParamsSchema,
+        response: {
+          200: listMembersResponseSchema
+        }
+      }
+    },
+    async (request) => listMembers(getUserId(request), request.params.id)
+  );
+
+  app.post(
+    "/:id/members",
+    {
+      schema: {
+        params: projectParamsSchema,
+        body: addMemberSchema,
+        response: {
+          201: memberResponseSchema
+        }
+      }
+    },
+    async (request, reply) => {
+      const response = await addMember(
+        getUserId(request),
+        request.params.id,
+        request.body
+      );
+
+      return reply.status(201).send(response);
+    }
+  );
+
+  app.patch(
+    "/:id/members/:userId",
+    {
+      schema: {
+        params: memberParamsSchema,
+        body: updateMemberSchema,
+        response: {
+          200: memberResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      updateMemberRole(
+        getUserId(request),
+        request.params.id,
+        request.params.userId,
+        request.body
+      )
+  );
+
+  app.delete(
+    "/:id/members/:userId",
+    {
+      schema: {
+        params: memberParamsSchema
+      }
+    },
+    async (request, reply) => {
+      await removeMember(
+        getUserId(request),
+        request.params.id,
+        request.params.userId
+      );
+
+      return reply.status(204).send();
+    }
   );
 
   void app.register(issueRoutes);
