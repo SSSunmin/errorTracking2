@@ -2,6 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P2 소스맵 정밀 매칭·메모리 바운딩·DELETE API — feat/sourcemap-precision-delete)
+- **소스맵 API(`api/sourcemaps-api`)**: 세 가지 변경을 반영해 전면 갱신. (1) **경로 접미사 매칭**: 업로드 시 `canonicalArtifactName`으로 `--dir` 기준 상대 경로를 저장 키로 사용(`basename` → `assets/routes/index.js`). 심볼리케이션은 `resolveTracerName`(longest-suffix wins)으로 프레임 URL과 대조 — `routes/index.js` vs `utils/index.js` 충돌 해소, basename-only 키는 하위 호환. (2) **2단계 메모리 바운딩**: `loadSourceMapsByName`이 filename 컬럼만 먼저 SELECT하고 `referencedBasenames`와 교차한 뒤, 참조된 행의 `data` blob만 두 번째 쿼리로 로드. 미참조 맵은 메모리에 올라오지 않음. (3) **DELETE 엔드포인트 신규**: `DELETE /:id/releases/:release/sourcemaps?filename=` — filename 있으면 단일 artifact, 없으면 릴리스 전체 삭제. 삭제 row > 0이면 `Event.symbolicated` 무효화. 응답 `{ deleted: number }`. (4) **업로드 CLI**: `--dir` 기준 상대 경로를 `?filename=`으로 전송하도록 변경(`node:path relative()` + POSIX 슬래시). (5) **알려진 한계 갱신**: 한계 #1(basename 충돌) → 해결됨·잔여 주의점 재기술, 한계 #2(전량 메모리 로드) → 완화됨·잔여 주의점 재기술.
+- **index.md**: 소스맵 API 항목 설명 갱신(DELETE·경로 접미사 매칭·2단계 바운딩 명시).
+
 ## 2026-06-23 (P1 리플레이 오리진 격리 — feat/replay-origin-isolation)
 - **대시보드(`architecture/dashboard`)**: 스냅샷·리플레이 렌더링을 `VITE_REPLAY_ORIGIN` env로 두 모드 전환하도록 문서화. (1) rrweb 마운트/스케일 로직을 `src/replay/render.ts`(`mountSnapshot`/`mountReplay`)로 단일화 — 인페이지·격리 뷰어가 동일 코어 사용. (2) env 비어있으면 기존처럼 대시보드 오리진 인페이지 렌더, 설정 시 별도 오리진(`replay-viewer.html`, Vite 2nd 엔트리)에서 cross-origin iframe + postMessage 브리지로 격리 — 뷰어는 토큰·네트워크 없음, `event.origin`을 `?parent=` 대조 검증, 명시 targetOrigin(절대 `*` 아님). (3) postMessage 프로토콜·origin 검증을 `src/replay/messaging.ts` 순수함수로 분리해 `messaging.test.ts` 12개로 검증. (4) 뷰어에 CSP `<meta>` 심층방어. 기존 known-limitation("별도 오리진 미구현")을 구현 완료 + 배포계층 follow-up(`replay.<host>` 서빙·`frame-ancestors` 헤더)으로 갱신.
 - **범위**: 앱 계층 격리만(사용자 결정). 배포 인프라(Caddy 서버블록·운영 compose·Tunnel 2nd hostname·`frame-ancestors` 헤더)는 후속 티켓. 로컬 dev는 env 미설정으로 same-origin 유지(마찰 0).

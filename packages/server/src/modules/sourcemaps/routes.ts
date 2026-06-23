@@ -2,9 +2,11 @@ import type { FastifyRequest } from "fastify";
 import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 
 import { badRequest, unauthorized } from "../../lib/errors.js";
-import { listSourceMaps, uploadSourceMap } from "./service.js";
+import { deleteSourceMaps, listSourceMaps, uploadSourceMap } from "./service.js";
 import {
   listSourceMapsResponseSchema,
+  sourceMapDeleteQuerySchema,
+  sourceMapDeleteResponseSchema,
   sourceMapParamsSchema,
   sourceMapUploadQuerySchema,
   sourceMapUploadResponseSchema
@@ -78,6 +80,28 @@ export const sourceMapRoutes: FastifyPluginCallbackZod = (app, _options, done) =
     },
     async (request) =>
       listSourceMaps(getUserId(request), request.params.id, request.params.release)
+  );
+
+  // Delete a single artifact (?filename=) or the whole release's maps (omitted).
+  // Lets stale/incorrect uploads be removed and supports release-level cleanup.
+  app.delete(
+    "/:id/releases/:release/sourcemaps",
+    {
+      schema: {
+        params: sourceMapParamsSchema,
+        querystring: sourceMapDeleteQuerySchema,
+        response: {
+          200: sourceMapDeleteResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      deleteSourceMaps(
+        getUserId(request),
+        request.params.id,
+        request.params.release,
+        request.query.filename
+      )
   );
 
   done();

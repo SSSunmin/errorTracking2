@@ -13,11 +13,14 @@
 //
 // Scans <dir> recursively for *.map files and POSTs each one (raw bytes) to
 // POST /api/projects/:id/releases/:release/sourcemaps?filename=<minified.js>.
-// The filename is the artifact the map applies to (the .map name minus ".map"),
-// which is what stack frames are matched against at symbolication time.
+// The filename is the artifact the map applies to (its path relative to <dir>,
+// minus ".map"), which is matched against stack-frame URLs by path suffix at
+// symbolication time. Sending the relative path — not just the basename — keeps
+// same-named artifacts in different directories (routes/index.js vs
+// utils/index.js) distinct.
 
 import { readdir, readFile } from "node:fs/promises";
-import { basename, join } from "node:path";
+import { join, relative, sep } from "node:path";
 
 const parseArgs = (argv) => {
   const args = {};
@@ -68,7 +71,12 @@ const main = async () => {
 
   let uploaded = 0;
   for (const mapPath of maps) {
-    const artifact = basename(mapPath).replace(/\.map$/u, "");
+    // Path relative to --dir, POSIX-style, with the trailing ".map" removed:
+    // dist/assets/routes/index.js.map → assets/routes/index.js.
+    const artifact = relative(args.dir, mapPath)
+      .split(sep)
+      .join("/")
+      .replace(/\.map$/u, "");
     const body = await readFile(mapPath);
     const endpoint =
       `${args.url.replace(/\/$/u, "")}/api/projects/${encodeURIComponent(args.project)}` +

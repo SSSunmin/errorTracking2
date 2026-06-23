@@ -1,10 +1,10 @@
 ---
 type: API Reference
 title: 소스맵 API
-description: 소스맵 업로드(JWT 인증) 및 목록 조회 엔드포인트. 미니파이된 스택트레이스를 원본 위치로 복원하는 심볼리케이션 기반 인프라.
+description: 소스맵 업로드·목록 조회·삭제(JWT 인증) 엔드포인트. 경로 접미사(path-suffix) 매칭으로 정밀 심볼리케이션, 2단계 메모리 바운딩, 릴리스/단일 artifact DELETE 지원.
 resource: packages/server/src/modules/sourcemaps/routes.ts
-tags: [api, sourcemaps, symbolication, upload, release]
-timestamp: 2026-06-22
+tags: [api, sourcemaps, symbolication, upload, delete, release]
+timestamp: 2026-06-23
 ---
 
 # 소스맵 API
@@ -27,7 +27,7 @@ timestamp: 2026-06-22
 
 | 파라미터 | 설명 |
 |---|---|
-| `filename` | 미니파이 artifact 이름 (예: `index-4f2a.js`). 쿼리·해시 제거 후 basename만 저장 키로 사용. |
+| `filename` | 미니파이 artifact의 **`--dir` 기준 상대 경로** (예: `assets/routes/index-4f2a.js`). 서버가 `canonicalArtifactName`으로 정규화 후 저장 키로 사용. |
 
 **파라미터 검증:**
 - `release`: `^[A-Za-z0-9._\-+:@]+$`, 1–256자
@@ -35,21 +35,48 @@ timestamp: 2026-06-22
 
 **서버 동작:**
 1. 프로젝트 소유권 확인
-2. `frameBasename(filename)`으로 basename 추출 → 저장 키로 사용
+2. `canonicalArtifactName(filename)` — `pathSegments()`로 분해 후 `/`로 재결합. 예: `./assets//routes/index.js` → `assets/routes/index.js`. basename-only 업로드(`index.js`)는 그대로 유지.
 3. body를 **비동기 gzip** 압축 (`node:zlib` promisify — 이벤트 루프 블로킹 없음)
-4. `(projectId, release, filename=basename)`으로 `SourceMap` upsert
+4. `(projectId, release, filename=정규화된_상대경로)`으로 `SourceMap` upsert
 5. 해당 `(projectId, release)`의 `Event.symbolicated`를 `updateMany`로 `null`로 무효화 (재업로드 시 캐시 갱신)
 
 **응답 201:**
 ```json
 {
-  "filename": "index-4f2a.js",
+  "filename": "assets/routes/index-4f2a.js",
   "release": "1.0.0",
   "sizeBytes": 12345,
-  "createdAt": "2026-06-22T00:00:00.000Z",
-  "updatedAt": "2026-06-22T00:00:00.000Z"
+  "createdAt": "2026-06-23T00:00:00.000Z",
+  "updatedAt": "2026-06-23T00:00:00.000Z"
 }
 ```
+
+### DELETE `/:id/releases/:release/sourcemaps`
+
+한 릴리스의 소스맵을 삭제한다. `filename` 쿼리가 있으면 해당 artifact만, 없으면 릴리스 전체를 삭제한다.
+
+**인증:** JWT Bearer
+
+**쿼리 파라미터:**
+
+| 파라미터 | 필수 | 설명 |
+|---|---|---|
+| `filename` | 선택 | 삭제할 artifact의 상대 경로. 생략 시 릴리스 전체 삭제. |
+
+**서버 동작:**
+1. 프로젝트 소유권 확인 (`ensureOwnedProject`)
+2. `filename` 있으면 `canonicalArtifactName(filename)`으로 정규화 → 해당 row만 `deleteMany`. 없으면 `(projectId, release)` 전체 `deleteMany`.
+3. 삭제된 row가 1개 이상이면 해당 `(projectId, release)`의 `Event.symbolicated`를 `updateMany`로 `null` 무효화 (다음 조회 시 재심볼리케이션).
+4. 삭제된 row가 0이면 캐시 무효화 없음.
+
+**응답 200:**
+```json
+{ "deleted": 3 }
+```
+
+> `deleted`가 0이면 해당 조건에 일치하는 row가 없었던 것. 404가 아닌 200으로 응답.
+
+---
 
 ### GET `/:id/releases/:release/sourcemaps`
 
@@ -80,7 +107,7 @@ timestamp: 2026-06-22
 
 ## 업로드 CLI (`scripts/upload-sourcemaps.mjs`)
 
-`dist/` 디렉터리를 재귀 스캔해 `*.map` 파일을 모두 업로드하는 Node.js 스크립트.
+`--dir` 디렉터리를 재귀 스캔해 `*.map` 파일을 모두 업로드하는 Node.js 스크립트.
 
 ```sh
 MINI_SENTRY_TOKEN=<accessToken> node scripts/upload-sourcemaps.mjs \
@@ -91,14 +118,16 @@ MINI_SENTRY_TOKEN=<accessToken> node scripts/upload-sourcemaps.mjs \
 ```
 
 - **토큰**: `MINI_SENTRY_TOKEN` 환경변수 우선, 없으면 `--token` 인자 fallback
-- **artifact 이름**: `*.map` 파일의 basename에서 `.map`을 제거한 값(`index-4f2a.js.map` → `index-4f2a.js`)
+- **artifact 이름**: `--dir` 기준 **상대 경로**에서 `.map`을 제거한 값. `node:path`의 `relative()` + POSIX 슬래시 변환. 예: `dist/assets/routes/index-4f2a.js.map` → `assets/routes/index-4f2a.js`. basename-only가 아닌 전체 상대 경로를 `?filename=`으로 전송해 경로 접미사 매칭이 정밀하게 동작함.
 - 업로드 실패 시 즉시 `process.exit(1)`
 
 ## 알려진 한계
 
-1. **basename 매칭 충돌**: 심볼리케이션 매칭 키가 파일 basename이다. 서로 다른 디렉터리에 동명 artifact(`routes/index.js`, `utils/index.js`)가 있으면 구분하지 못한다. 저장 키도 `(projectId, release, filename=basename)`이라 동명이면 upsert로 덮어쓰인다. 콘텐츠 해시 번들명(`index-4f2a.js`)을 사용하는 일반 번들러 설정에서는 실무상 드묾. 향후 full relative path 매칭으로 격상 여지.
+1. **[해결됨] basename 매칭 충돌 → 경로 접미사 매칭으로 대체**: 심볼리케이션은 이제 `resolveTracerName`(경로 접미사 매칭)으로 프레임 URL을 저장된 artifact 키와 대조한다. 저장 키의 경로 세그먼트가 프레임 URL 세그먼트의 **tail(접미사)**이면 매칭, 가장 긴(가장 구체적인) 매칭이 우선한다. `routes/index.js`와 `utils/index.js`는 서로 다른 키로 구분되어 충돌 없음. basename-only 저장 키(1세그먼트)는 그 이름으로 끝나는 모든 프레임 URL에 매칭되므로 이전 업로드 방식과 하위 호환된다.
+   - **남은 주의점**: 매칭은 업로드된 경로가 프레임 URL의 접미사여야 동작한다. 빌드 출력 구조가 프레임 URL 경로와 다르면 매칭 실패 가능. CLI가 `--dir` 기준 상대 경로를 그대로 전송하므로 일반적인 번들러 설정에서는 자동으로 맞음.
 
-2. **소스맵 전량 메모리 로드**: 이벤트 조회 시 해당 릴리스의 소스맵을 전부 DB에서 읽어 메모리에 gunzip한다. 대용량·다수 릴리스에서 메모리 부담이 있다. 향후 오브젝트 스토리지 이전 여지.
+2. **[완화됨] 소스맵 전량 메모리 로드 → 2단계 로드로 바운딩**: `loadSourceMapsByName`이 2단계로 동작한다. 1단계: 릴리스의 `filename` 컬럼만 SELECT(경량). 2단계: 실제 프레임이 참조하는 basename(`referencedBasenames`)과 일치하는 행의 gzip `data` blob만 SELECT·gunzip. 프레임이 참조하지 않는 소스맵은 메모리에 올라오지 않는다.
+   - **남은 주의점**: 참조된 소스맵 전체는 여전히 메모리에 gunzip된다. 단일 소스맵이 매우 크거나, 한 릴리스에서 다수 소스맵을 동시에 참조하는 경우 메모리 부담 잔존. 향후 오브젝트 스토리지 이전 여지.
 
 3. **업로드 시 동기 캐시 무효화 `updateMany`**: 재업로드 시 해당 릴리스의 모든 이벤트에 `symbolicated = null` mass write가 발생한다. 업로드는 비빈번 관리 작업이라 수용 가능.
 

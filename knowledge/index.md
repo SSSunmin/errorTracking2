@@ -29,7 +29,7 @@
 - [인제스트 API](/api/ingest-api.md) — POST /:projectId/store 이벤트 수집
 - [이슈 API](/api/issues-api.md) — 이슈 목록·상세·상태 변경 (hasReplay, 심볼리케이션 포함)
 - [세션 리플레이 API](/api/replay-api.md) — 리플레이 업로드(DSN 인증) + 조회(JWT 인증)
-- [소스맵 API](/api/sourcemaps-api.md) — 소스맵 업로드(JWT 인증) + 목록 조회, 심볼리케이션 흐름·알려진 한계
+- [소스맵 API](/api/sourcemaps-api.md) — 소스맵 업로드·목록 조회·DELETE(JWT 인증), 경로 접미사 매칭·2단계 메모리 바운딩·캐시 무효화, 알려진 한계
 - [알림 규칙 API](/api/alerts-api.md) — AlertRule CRUD
 - [에러 응답 규약](/reference/error-model.md) — 공통 에러 포맷·코드
 

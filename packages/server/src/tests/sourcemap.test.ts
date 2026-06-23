@@ -194,6 +194,21 @@ describe("POST …/releases/:release/sourcemaps", () => {
     expect(response.statusCode).toBe(400);
   });
 
+  test("all-slash filename (canonicalizes to empty) → 400", async () => {
+    const session = await registerViaApi("sm-slashname@example.com");
+    const projectId = await createProjectViaApi(session);
+
+    const response = await uploadSourceMap(
+      projectId,
+      RELEASE,
+      "/",
+      session.accessToken,
+      Buffer.from("{}")
+    );
+
+    expect(response.statusCode).toBe(400);
+  });
+
   test("another user's project → 404", async () => {
     const owner = await registerViaApi("sm-owner@example.com");
     const projectId = await createProjectViaApi(owner);
@@ -310,6 +325,105 @@ describe("GET …/releases/:release/sourcemaps", () => {
   });
 });
 
+// ── delete route ──────────────────────────────────────────────────────────────
+
+const deleteSourceMap = (
+  projectId: string,
+  release: string,
+  token: string,
+  filename?: string
+) =>
+  app.inject({
+    method: "DELETE",
+    url:
+      `/api/projects/${projectId}/releases/${encodeURIComponent(release)}/sourcemaps` +
+      (filename === undefined ? "" : `?filename=${encodeURIComponent(filename)}`),
+    headers: { authorization: `Bearer ${token}` }
+  });
+
+describe("DELETE …/releases/:release/sourcemaps", () => {
+  test("no auth → 401", async () => {
+    const session = await registerViaApi("sm-del-noauth@example.com");
+    const projectId = await createProjectViaApi(session);
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${projectId}/releases/${RELEASE}/sourcemaps?filename=app.js`
+    });
+
+    expect(response.statusCode).toBe(401);
+  });
+
+  test("another user's project → 404", async () => {
+    const owner = await registerViaApi("sm-del-owner@example.com");
+    const projectId = await createProjectViaApi(owner);
+    await uploadSourceMap(projectId, RELEASE, "app.js", owner.accessToken, Buffer.from("{}"));
+    const intruder = await registerViaApi("sm-del-intruder@example.com");
+
+    const response = await deleteSourceMap(projectId, RELEASE, intruder.accessToken, "app.js");
+
+    expect(response.statusCode).toBe(404);
+    // The map must still exist.
+    const rows = await prisma.sourceMap.findMany({ where: { projectId, release: RELEASE } });
+    expect(rows.length).toBe(1);
+  });
+
+  test("deletes a single artifact and invalidates the cache", async () => {
+    const session = await registerViaApi("sm-del-one@example.com");
+    const projectId = await createProjectViaApi(session);
+    await uploadSourceMap(projectId, RELEASE, "app.js", session.accessToken, Buffer.from("{}"));
+    await uploadSourceMap(projectId, RELEASE, "vendor.js", session.accessToken, Buffer.from("{}"));
+
+    // Seed a cached symbolication to prove deletion invalidates it.
+    const result = await processEvent(projectId, eventWithStack());
+    await prisma.event.update({
+      where: { id: result.eventId },
+      data: { symbolicated: { frames: [{ cached: true }] } }
+    });
+
+    const response = await deleteSourceMap(projectId, RELEASE, session.accessToken, "app.js");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ deleted: number }>().deleted).toBe(1);
+
+    const remaining = await prisma.sourceMap.findMany({
+      where: { projectId, release: RELEASE },
+      select: { filename: true }
+    });
+    expect(remaining.map((m) => m.filename)).toEqual(["vendor.js"]);
+
+    const row = await prisma.event.findUnique({
+      where: { id: result.eventId },
+      select: { symbolicated: true }
+    });
+    expect(row?.symbolicated).toBeNull();
+  });
+
+  test("deletes the whole release when no filename is given", async () => {
+    const session = await registerViaApi("sm-del-all@example.com");
+    const projectId = await createProjectViaApi(session);
+    await uploadSourceMap(projectId, RELEASE, "app.js", session.accessToken, Buffer.from("{}"));
+    await uploadSourceMap(projectId, RELEASE, "vendor.js", session.accessToken, Buffer.from("{}"));
+
+    const response = await deleteSourceMap(projectId, RELEASE, session.accessToken);
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ deleted: number }>().deleted).toBe(2);
+    const rows = await prisma.sourceMap.findMany({ where: { projectId, release: RELEASE } });
+    expect(rows.length).toBe(0);
+  });
+
+  test("deleting a missing artifact → 200 deleted:0", async () => {
+    const session = await registerViaApi("sm-del-missing@example.com");
+    const projectId = await createProjectViaApi(session);
+
+    const response = await deleteSourceMap(projectId, RELEASE, session.accessToken, "nope.js");
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json<{ deleted: number }>().deleted).toBe(0);
+  });
+});
+
 // ── lazy symbolication in the events list ─────────────────────────────────────
 
 describe("listIssueEvents lazy symbolication", () => {
@@ -346,6 +460,49 @@ describe("listIssueEvents lazy symbolication", () => {
     });
     expect(row?.symbolicated).not.toBeNull();
     expect(firstFrame(row?.symbolicated).originalFilename).toBe("src/app.ts");
+  });
+
+  test("matches the right map when same-named artifacts live in different dirs", async () => {
+    const session = await registerViaApi("sm-pathmatch@example.com");
+    const projectId = await createProjectViaApi(session);
+
+    // Event frame points at routes/index.js; utils/index.js must not win.
+    const payload = eventWithStack();
+    const frames = (
+      payload.exception?.stacktrace as { frames: { filename: string }[] }
+    ).frames;
+    const target = frames[0];
+    if (!target) throw new Error("expected a stack frame");
+    target.filename = "https://app.com/assets/routes/index.js";
+    const result = await processEvent(projectId, payload);
+
+    const routesMap = JSON.stringify({
+      version: 3,
+      file: "index.js",
+      sources: ["routes/index.ts"],
+      names: ["handleClick"],
+      mappings: "AAAAA",
+      sourcesContent: ["function handleClick() {}\n"]
+    });
+    const utilsMap = JSON.stringify({
+      version: 3,
+      file: "index.js",
+      sources: ["utils/index.ts"],
+      names: ["other"],
+      mappings: "AAAAA",
+      sourcesContent: ["function other() {}\n"]
+    });
+    await uploadSourceMap(projectId, RELEASE, "routes/index.js", session.accessToken, Buffer.from(routesMap));
+    await uploadSourceMap(projectId, RELEASE, "utils/index.js", session.accessToken, Buffer.from(utilsMap));
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/projects/${projectId}/issues/${result.issueId}/events`,
+      headers: { authorization: `Bearer ${session.accessToken}` }
+    });
+    expect(response.statusCode).toBe(200);
+    const body = issueEventsResponseSchema.parse(response.json<unknown>());
+    expect(firstFrame(body.events[0]?.stacktrace).originalFilename).toBe("routes/index.ts");
   });
 
   test("event without a matching map returns raw stacktrace and caches nothing", async () => {

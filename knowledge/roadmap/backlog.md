@@ -84,14 +84,19 @@ timestamp: 2026-06-22
 ## P2 — 소스맵 정확도 / 운영
 **왜**: 프레임 매칭이 **basename-only**라 서로 다른 경로의 동명 파일(`app.js`)이 충돌할 수 있다. 또 조회 시 해당 릴리스 소스맵을 **전량 메모리 로드**해 대용량/다수 릴리스에서 부담. 삭제 API도 없다(upload+list만).
 
-**근거**: `packages/server/src/modules/sourcemaps/symbolicate.ts`(`frameBasename`), [소스맵 API](/api/sourcemaps-api.md) "알려진 한계", [ERD](/database/erd.md) L201.
+**근거**: `packages/server/src/modules/sourcemaps/symbolicate.ts`, [소스맵 API](/api/sourcemaps-api.md) "알려진 한계", [ERD](/database/erd.md) L201.
 
-**범위(스케치)**:
-- 매칭을 `release` + (가능하면) 전체 경로 기준으로 업그레이드해 동명 파일 오매칭 방지.
-- 소스맵 **삭제 API**(`DELETE …/releases/:release/sourcemaps?filename=`) + 릴리스 단위 정리(P0 retention과 연계).
-- 심볼리케이션 시 **필요한 파일만** 로드(프레임에 등장하는 basename/경로만 쿼리) — 전량 로드 회피.
+### 완료 (2026-06-23, PR 진행, feat/sourcemap-precision-delete)
+- **정밀도**: basename 완전일치 → **경로 접미사(suffix) 매칭**으로 격상(`pathSegments`/`resolveTracerName`, 가장 긴 일치 우선). 저장 키는 정규화 상대 경로(`canonicalArtifactName`), CLI는 `--dir` 기준 상대 경로 전송. basename-only 업로드는 무회귀.
+- **삭제 API**: `DELETE …/releases/:release/sourcemaps` — `?filename=`이면 단일, 생략하면 릴리스 전체. 삭제 시 `Event.symbolicated` 캐시 무효화. (`{ deleted: number }`)
+- **메모리**: `loadSourceMapsByName` **2단계 로드** — `filename`만 싸게 조회 → 프레임에 등장하는 basename에 해당하는 행의 `data` blob만 로드. 안 쓰는 맵은 gunzip 안 함.
+- 테스트 +11(suffix 매칭 단위 4, delete 통합 5, 경로 정밀도 통합 1, 입력검증 1). 전체 149 green.
 
-**의존성**: P0(retention) 정책과 일부 연계. 정확도 개선은 독립 가능.
+### 남은 follow-up (비차단)
+- **오브젝트 스토리지 이전**: 참조된 맵은 여전히 전부 메모리에 gunzip. 진짜 대용량은 S3류 외부 스토리지로 이전 여지.
+- **릴리스 단위 retention 연계**: 삭제 API를 P0 retention 잡과 묶어 오래된 릴리스 소스맵 자동 정리(현재는 수동 호출만).
+
+**의존성**: P0(retention) 정책과 일부 연계. 정확도/삭제/메모리는 완료.
 
 ---
 
