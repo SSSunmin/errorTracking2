@@ -73,22 +73,26 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
           </button>
         </div>
 
-        <dl className="kv">
-          <dt>ID</dt>
-          <dd className="row">
+        <div className="modal-field">
+          <span className="muted small">ID</span>
+          <div className="row">
             <code>{user.id}</code>
             <button type="button" className="ghost small" onClick={copyId}>
               {copied ? "복사됨" : "복사"}
             </button>
-          </dd>
-          <dt>이메일</dt>
-          <dd>{user.email}</dd>
-          <dt>가입일</dt>
-          <dd>{formatJoinDate(user.createdAt)}</dd>
-        </dl>
+          </div>
+        </div>
+        <div className="modal-field">
+          <span className="muted small">이메일</span>
+          <span>{user.email}</span>
+        </div>
+        <div className="modal-field">
+          <span className="muted small">가입일</span>
+          <span>{formatJoinDate(user.createdAt)}</span>
+        </div>
 
         <form
-          className="modal-form"
+          className="modal-field"
           onSubmit={(event) => {
             event.preventDefault();
             void save();
