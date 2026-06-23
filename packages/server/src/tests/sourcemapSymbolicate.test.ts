@@ -49,6 +49,17 @@ const makeSourceMap = (options: MapOptions = {}): string => {
   return JSON.stringify(map);
 };
 
+// Like makeSourceMap but with a caller-chosen `sources[0]`, so a test can tell
+// which of several maps actually resolved a frame (originalFilename == source).
+const makeSourceMapFor = (source: string): string =>
+  JSON.stringify({
+    version: 3,
+    file: "out.js",
+    sources: [source],
+    names: ["handleClick"],
+    mappings: "AAAAA"
+  });
+
 const frame = (overrides: Partial<RawFrame> = {}): RawFrame => ({
   function: "a",
   filename: "https://app.com/assets/app.js",
@@ -154,5 +165,62 @@ describe("symbolicateFrames", () => {
     const result = symbolicateFrames([], maps);
     expect(result.changed).toBe(false);
     expect(result.frames).toEqual([]);
+  });
+});
+
+describe("symbolicateFrames path-suffix matching", () => {
+  test("disambiguates same-named artifacts in different directories", () => {
+    const maps = new Map([
+      ["routes/index.js", makeSourceMapFor("routes/index.ts")],
+      ["utils/index.js", makeSourceMapFor("utils/index.ts")]
+    ]);
+
+    const result = symbolicateFrames(
+      [frame({ filename: "https://app.com/assets/routes/index.js" })],
+      maps
+    );
+
+    expect(result.changed).toBe(true);
+    // The frame under routes/ must resolve via the routes map, not utils/.
+    expect(result.frames[0]?.originalFilename).toBe("routes/index.ts");
+  });
+
+  test("does not match a same-named artifact from a different directory", () => {
+    const maps = new Map([["utils/index.js", makeSourceMapFor("utils/index.ts")]]);
+
+    const result = symbolicateFrames(
+      [frame({ filename: "https://app.com/assets/routes/index.js" })],
+      maps
+    );
+
+    expect(result.changed).toBe(false);
+    expect(result.frames[0]?.originalFilename).toBeUndefined();
+  });
+
+  test("prefers the longest (most specific) path suffix over a bare basename", () => {
+    const maps = new Map([
+      ["index.js", makeSourceMapFor("bundle.ts")],
+      ["routes/index.js", makeSourceMapFor("routes/index.ts")]
+    ]);
+
+    const result = symbolicateFrames(
+      [frame({ filename: "https://app.com/assets/routes/index.js" })],
+      maps
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.frames[0]?.originalFilename).toBe("routes/index.ts");
+  });
+
+  test("a bare basename map still matches when no path info is available", () => {
+    const maps = new Map([["index.js", makeSourceMapFor("src/index.ts")]]);
+
+    const result = symbolicateFrames(
+      [frame({ filename: "https://app.com/a/b/c/index.js" })],
+      maps
+    );
+
+    expect(result.changed).toBe(true);
+    expect(result.frames[0]?.originalFilename).toBe("src/index.ts");
   });
 });

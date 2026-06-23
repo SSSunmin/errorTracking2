@@ -31,18 +31,66 @@ export interface SymbolicateResult {
   changed: boolean;
 }
 
+// Split a frame URL / artifact path into its path segments, dropping the
+// query/hash, a leading scheme+host ("https://app.com"), and empty segments.
+// "https://app.com/assets/routes/index.js?v=1" → ["assets", "routes", "index.js"].
+export const pathSegments = (filename: string): string[] => {
+  const withoutQuery = filename.split(/[?#]/u, 1)[0] ?? filename;
+  const withoutScheme = withoutQuery.replace(
+    /^[A-Za-z][A-Za-z0-9+.-]*:\/\/[^/]*/u,
+    ""
+  );
+  return withoutScheme.split(/[/\\]/u).filter((segment) => segment !== "");
+};
+
 // Strip query/hash and any directory prefix so a frame's URL
-// ("https://app.com/assets/index-4f2a.js?v=1") matches an uploaded source map
-// keyed by the bare artifact name ("index-4f2a.js").
+// ("https://app.com/assets/index-4f2a.js?v=1") reduces to the bare artifact name
+// ("index-4f2a.js"). Used as the storage key fallback and the load-time filter.
 export const frameBasename = (filename: string | undefined): string | null => {
   if (filename === undefined || filename === "") {
     return null;
   }
 
-  const withoutQuery = filename.split(/[?#]/u, 1)[0] ?? filename;
-  const segments = withoutQuery.split(/[/\\]/u);
-  const last = segments.at(-1);
+  const last = pathSegments(filename).at(-1);
   return last !== undefined && last !== "" ? last : null;
+};
+
+// Pick the stored source map that best matches a frame by path suffix. A stored
+// key matches when its path segments are a tail of the frame's segments; the
+// longest (most specific) match wins, so "routes/index.js" beats a bare
+// "index.js" and never collides with "utils/index.js". A basename-only stored
+// key (one segment) still matches any frame ending in that name — preserving the
+// previous behavior when uploads carry no directory information.
+interface TracerKey {
+  name: string;
+  segments: string[];
+}
+
+const resolveTracerName = (
+  frameFilename: string,
+  tracerKeys: readonly TracerKey[]
+): string | null => {
+  const frameSegs = pathSegments(frameFilename);
+  if (frameSegs.length === 0) {
+    return null;
+  }
+
+  let best: string | null = null;
+  let bestLen = 0;
+  for (const { name, segments } of tracerKeys) {
+    if (segments.length === 0 || segments.length > frameSegs.length) {
+      continue;
+    }
+    const offset = frameSegs.length - segments.length;
+    const isSuffix = segments.every(
+      (segment, index) => segment === frameSegs[offset + index]
+    );
+    if (isSuffix && segments.length > bestLen) {
+      best = name;
+      bestLen = segments.length;
+    }
+  }
+  return best;
 };
 
 // Build a TraceMap once per source map, tolerating malformed input by treating
@@ -140,10 +188,19 @@ export const symbolicateFrames = (
   if (tracers.size === 0) {
     return { frames: [...frames], changed: false };
   }
+  // Pre-split each stored key's path segments once, not per frame.
+  const tracerKeys: TracerKey[] = [...tracers.keys()].map((name) => ({
+    name,
+    segments: pathSegments(name)
+  }));
 
   let changed = false;
   const result = frames.map((frame): SymbolicatedFrame => {
-    const name = frameBasename(frame.filename);
+    if (frame.filename === undefined || frame.filename === "") {
+      return frame;
+    }
+
+    const name = resolveTracerName(frame.filename, tracerKeys);
     if (name === null) {
       return frame;
     }
