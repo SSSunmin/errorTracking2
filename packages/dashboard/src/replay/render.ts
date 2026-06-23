@@ -54,6 +54,9 @@ export const mountSnapshot = (
     iframe.style.pointerEvents = "none";
 
     const fit = (): void => {
+      if (container.clientWidth === 0) {
+        return;
+      }
       const scale = container.clientWidth / captureW;
       iframe.style.transform = `scale(${String(scale)})`;
       container.style.height = `${String(captureH * scale)}px`;
@@ -185,16 +188,22 @@ export const mountReplay = (
 
   return {
     play: () => {
+      if (!replayer) {
+        return;
+      }
       try {
-        replayer?.play(0);
+        replayer.play(0);
         onStatus("playing");
       } catch {
         /* ignore */
       }
     },
     pause: () => {
+      if (!replayer) {
+        return;
+      }
       try {
-        replayer?.pause();
+        replayer.pause();
         onStatus("paused");
       } catch {
         /* ignore */

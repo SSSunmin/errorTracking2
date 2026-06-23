@@ -163,6 +163,17 @@ const ViewerFrame = ({
     if (!iframe) {
       return;
     }
+    let sent = false;
+    // The viewer's one-shot "ready" message and the iframe's load event race;
+    // whichever fires first forwards the payload and the guard makes the other
+    // a no-op, so the viewer renders exactly once and we never miss "ready".
+    const sendPayload = (): void => {
+      if (sent) {
+        return;
+      }
+      sent = true;
+      iframe.contentWindow?.postMessage(payloadRef.current, origin);
+    };
     const onMessage = (event: MessageEvent): void => {
       if (event.source !== iframe.contentWindow) {
         return;
@@ -175,15 +186,21 @@ const ViewerFrame = ({
         return;
       }
       if (message.kind === "ready") {
-        iframe.contentWindow?.postMessage(payloadRef.current, origin);
+        sendPayload();
       } else {
         iframe.style.height = `${String(message.height)}px`;
       }
     };
     window.addEventListener("message", onMessage);
+    // By the load event the viewer's module — and its message listener — has run,
+    // so posting here is reliable even if the one-shot "ready" was missed.
+    iframe.addEventListener("load", sendPayload);
     return () => {
       window.removeEventListener("message", onMessage);
+      iframe.removeEventListener("load", sendPayload);
     };
+    // payload changes are handled by remounting the section (key by event id),
+    // so this bridge only re-runs when the viewer origin changes.
   }, [origin]);
 
   const src = `${origin}/replay-viewer.html?parent=${encodeURIComponent(window.location.origin)}`;
@@ -193,6 +210,11 @@ const ViewerFrame = ({
       src={src}
       className={className}
       title={title}
+      // Cross-origin already isolates the viewer; sandbox additionally drops
+      // popups/top-navigation/forms. allow-same-origin keeps the viewer on its
+      // OWN origin (replay.<host>) — not the dashboard's — which rrweb needs for
+      // its allow-same-origin replay iframe.
+      sandbox="allow-scripts allow-same-origin"
       style={{ width: "100%", border: 0 }}
     />
   );
@@ -297,6 +319,9 @@ const ReplayPlayerInline = ({ events }: { events: ReplayEvent[] }): ReactNode =>
     if (!container) {
       return;
     }
+    // Clear any lingering failed/finished status before re-initializing so a
+    // stale message can't flash over a fresh recording.
+    setStatus("idle");
     const controller = mountReplay(container, events, setStatus);
     controllerRef.current = controller;
     return () => {
