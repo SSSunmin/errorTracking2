@@ -11,6 +11,12 @@ dotenv.config({ path: path.join(repoRoot, ".env"), override: false });
 
 const nodeEnvSchema = z.enum(["development", "test", "production"]);
 
+// Structural cron validation: 5 (min hour dom mon dow) or 6 (+seconds) fields,
+// each built from cron-legal chars. Catches typos like "every monday" or a
+// dropped field at boot, instead of silently failing inside BullMQ's scheduler.
+const cronField = String.raw`[0-9A-Za-z*,\-/?]+`;
+const cronPattern = new RegExp(`^(${cronField}\\s+){4,5}${cronField}$`);
+
 const rawNodeEnv = nodeEnvSchema.catch("development").parse(process.env.NODE_ENV);
 
 if (rawNodeEnv === "production" && !process.env.CORS_ORIGIN) {
@@ -41,8 +47,14 @@ const envSchema = z.object({
   RETENTION_SNAPSHOT_DAYS: z.coerce.number().int().min(0).default(14),
   RETENTION_EVENT_DAYS: z.coerce.number().int().min(0).default(90),
   RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(100_000).default(1_000),
-  // BullMQ repeatable job cron 패턴(기본: 매일 03:00).
-  RETENTION_CRON: z.string().min(1).default("0 3 * * *")
+  // BullMQ repeatable job cron 패턴(기본: 매일 03:00). 잘못된 패턴은 부팅 시 실패.
+  RETENTION_CRON: z
+    .string()
+    .min(1)
+    .refine((value) => cronPattern.test(value.trim()), {
+      message: "RETENTION_CRON must be a 5- or 6-field cron pattern"
+    })
+    .default("0 3 * * *")
 });
 
 const parsedEnv = envSchema.parse({

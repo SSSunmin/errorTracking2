@@ -79,6 +79,10 @@ export const getRetentionQueue = (): Queue => {
   retentionQueueInstance ??= new Queue(retentionQueueName, {
     connection: createRedisConnection(),
     defaultJobOptions: {
+      // Mirror the ingest queue's resilience: a transient PG/Redis blip mid-prune
+      // should retry within the same tick instead of waiting a full cron period.
+      attempts: 3,
+      backoff: { type: "exponential", delay: 60_000 },
       removeOnComplete: { count: 100 },
       removeOnFail: { count: 100 }
     }
