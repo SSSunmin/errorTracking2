@@ -165,8 +165,17 @@ export const changePassword = async (
   if (!user) {
     throw unauthorized("Invalid access token");
   }
+  // 400 (not 401) for a wrong current password: the caller is already
+  // authenticated, and the dashboard's request() retries 401s through a token
+  // refresh — which would be wrong here. (Verify-then-update isn't transactional,
+  // but a concurrent self-change is benign: both attempts know the password.)
   if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
     throw badRequest("Current password is incorrect");
+  }
+  // The schema rejects new === current as plaintext; also reject a new password
+  // that actually matches the stored hash (e.g. differs only by what was typed).
+  if (await verifyPassword(user.passwordHash, input.newPassword)) {
+    throw badRequest("New password must differ from the current one");
   }
 
   const passwordHash = await hashPassword(input.newPassword);

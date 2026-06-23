@@ -176,18 +176,32 @@ describe("PATCH /api/auth/me/password", () => {
       userId: "n/a"
     };
 
-    await changePw(session, {
+    const changeResponse = await changePw(session, {
       currentPassword: "password123",
       newPassword: "newpassword456"
     });
+    const newRefreshCookie = changeResponse.cookies.find(
+      (c) => c.name === refreshCookieName
+    );
+    if (!newRefreshCookie) throw new Error("Expected a fresh refresh cookie");
+
+    // The fresh cookie from the change keeps the current session working. Check
+    // this BEFORE the old one: reusing a revoked token trips reuse-detection,
+    // which then revokes the whole family (including this fresh token).
+    const newRefresh = await app.inject({
+      method: "POST",
+      url: "/api/auth/refresh",
+      cookies: { [refreshCookieName]: newRefreshCookie.value }
+    });
+    expect(newRefresh.statusCode).toBe(200);
 
     // The refresh token issued at registration is now revoked.
-    const refresh = await app.inject({
+    const oldRefresh = await app.inject({
       method: "POST",
       url: "/api/auth/refresh",
       cookies: { [refreshCookieName]: oldRefreshCookie.value }
     });
-    expect(refresh.statusCode).toBe(401);
+    expect(oldRefresh.statusCode).toBe(401);
   });
 
   test("requires authentication (401)", async () => {

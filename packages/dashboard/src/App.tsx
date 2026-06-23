@@ -43,6 +43,10 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
       setPwError("새 비밀번호는 8자 이상이어야 합니다.");
       return;
     }
+    if (newPw === currentPw) {
+      setPwError("새 비밀번호는 현재 비밀번호와 달라야 합니다.");
+      return;
+    }
     setPwBusy(true);
     setPwError(null);
     setPwDone(false);
@@ -167,6 +171,7 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
           <span className="muted small">비밀번호 변경</span>
           <input
             type="password"
+            name="current-password"
             aria-label="현재 비밀번호"
             placeholder="현재 비밀번호"
             autoComplete="current-password"
@@ -178,6 +183,7 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
           />
           <input
             type="password"
+            name="new-password"
             aria-label="새 비밀번호"
             placeholder="새 비밀번호 (8자 이상)"
             autoComplete="new-password"
