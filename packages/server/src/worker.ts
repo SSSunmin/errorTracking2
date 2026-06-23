@@ -2,6 +2,7 @@ import { Worker } from "bullmq";
 
 import { env } from "./config/env.js";
 import {
+  closeIngestQueue,
   closeRetentionQueue,
   createRedisConnection,
   ingestQueueName,
@@ -77,6 +78,7 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
   try {
     await worker.close();
     await retentionWorker.close();
+    await closeIngestQueue();
     await closeRetentionQueue();
     await prisma.$disconnect();
     process.exitCode = 0;

@@ -13,11 +13,15 @@
  * TRUNCATE handled by setup.ts beforeEach).
  */
 
-import { describe, expect, test } from "vitest";
+import { randomUUID } from "node:crypto";
+
+import { describe, expect, test, vi } from "vitest";
 
 import { prisma } from "../lib/prisma.js";
 import {
   pruneRetention,
+  RetentionPruneError,
+  type BatchDeleter,
   type RetentionConfig
 } from "../modules/retention/prune.js";
 
@@ -35,11 +39,9 @@ const cfg = (over: Partial<RetentionConfig>): RetentionConfig => ({
   ...over
 });
 
-let seq = 0;
-
 const seedProject = async (): Promise<{ projectId: string; issueId: string }> => {
-  seq += 1;
-  const id = String(seq);
+  // Globally unique per call — no shared module counter to race or reset.
+  const id = randomUUID();
   const user = await prisma.user.create({
     data: { email: `retention-${id}@example.com`, passwordHash: "x" }
   });
@@ -174,6 +176,28 @@ describe("pruneRetention", () => {
     expect(result.event).toBe(0);
     expect(await prisma.eventReplay.count()).toBe(0); // pruned (no FK keeps it)
     expect(await prisma.event.count()).toBe(1); // untouched
+  });
+
+  test("batch failure mid-pass preserves committed counts in RetentionPruneError", async () => {
+    // First batch commits 2 rows; the second batch fails (e.g. a dropped PG
+    // connection). The thrown error must still report the 2 already-committed.
+    const deleteBatch = vi
+      .fn<BatchDeleter>()
+      .mockResolvedValueOnce(2)
+      .mockRejectedValueOnce(new Error("connection reset"));
+
+    let caught: unknown;
+    try {
+      await pruneRetention(cfg({ replayDays: 14, batchSize: 2 }), deleteBatch);
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(RetentionPruneError);
+    const err = caught as RetentionPruneError;
+    expect(err.table).toBe("EventReplay");
+    expect(err.partial.replay).toBe(2);
+    expect(err.partial.snapshot).toBe(0);
   });
 
   test("Event prune cascades a remaining snapshot (FK onDelete: Cascade)", async () => {

@@ -46,7 +46,9 @@ const envSchema = z.object({
   RETENTION_REPLAY_DAYS: z.coerce.number().int().min(0).default(14),
   RETENTION_SNAPSHOT_DAYS: z.coerce.number().int().min(0).default(14),
   RETENTION_EVENT_DAYS: z.coerce.number().int().min(0).default(90),
-  RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(100_000).default(1_000),
+  // Capped at 10k: batching exists to avoid table-wide locks on the large
+  // BYTEA/JSONB tables, so an oversized batch would defeat the purpose.
+  RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(10_000).default(1_000),
   // BullMQ repeatable job cron 패턴(기본: 매일 03:00). 잘못된 패턴은 부팅 시 실패.
   RETENTION_CRON: z
     .string()
