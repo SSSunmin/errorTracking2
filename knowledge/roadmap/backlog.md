@@ -63,15 +63,21 @@ timestamp: 2026-06-22
 ---
 
 ## P1 — 리플레이 보안 하드닝 (stored-XSS 차단)
-**왜**: 리플레이가 대시보드와 **같은 오리진**의 `allow-same-origin` iframe에서 렌더된다. 신뢰할 수 없는 녹화를 그대로 재생하면 stored XSS 위험. 실제/외부 녹화를 노출하기 전에 닫아야 하는 known limitation.
+**왜**: 리플레이가 대시보드와 **같은 오리진**의 `allow-same-origin` iframe에서 렌더됐다. 신뢰할 수 없는 녹화를 그대로 재생하면 stored XSS 위험.
 
-**근거**: [대시보드](/architecture/dashboard.md) L93, [브라우저 SDK](/architecture/sdk.md) L244, `packages/dashboard/src/pages/IssueDetailPage.tsx`(SECURITY 주석).
+**근거**: [대시보드](/architecture/dashboard.md)(오리진 격리 절), `packages/dashboard/src/pages/IssueDetailPage.tsx`.
 
-**범위(스케치)**:
-- 리플레이 뷰를 **별도 오리진**(또는 최소권한 sandbox/`srcdoc`)에서 서빙해 대시보드 오리진과 격리. 정적 서브도메인/전용 라우트 + CSP 검토.
-- (부수, 작게) 소스맵 메모리 로드 개선은 P2와 겹침 — 보안 범위 내에선 제외 가능.
+### 앱 계층 격리 — 완료 (2026-06-23, PR #8, feat/replay-origin-isolation)
+- `VITE_REPLAY_ORIGIN` 설정 시 리플레이/스냅샷을 별도 오리진 `replay-viewer.html`(cross-origin iframe + postMessage 브리지)에서 렌더 → 뷰어는 토큰·네트워크 없음, 신뢰 못 할 녹화가 대시보드 토큰·DOM·`/api`에 도달 불가. 비어있으면 기존 인페이지 렌더(로컬 dev).
+- rrweb 렌더 코어 `src/replay/render.ts` 단일화, 신뢰경계 `src/replay/messaging.ts`(순수함수+테스트 12), iframe `sandbox`, 뷰어 CSP `<meta>`.
 
-**의존성**: 배포/오리진 구성과 맞물림(메모리: 운영 VPS+compose+Caddy). 운영 노출 전 처리.
+### 남은 follow-up — 배포 계층 (운영 노출 전 필수)
+**왜**: 앱 코드만으론 못 막는 두 가지가 남아있고, 둘 다 배포 구성(메모리: 운영 VPS+compose+Caddy)이 필요하다.
+- **`frame-ancestors` 헤더 (필수 전제)**: 뷰어 응답에 `Content-Security-Policy: frame-ancestors <dashboard-origin>`를 줘서 **임의 사이트가 뷰어를 iframe으로 임베드하는 것**(클릭재킹 빌미)을 차단. `<meta>`로는 설정 불가 → Caddy 응답 헤더로만 가능. **이게 없으면 운영 노출 금지** (현 상태에서 실데이터 누출은 없으나 — 뷰어는 부모가 넣어준 데이터만 그림 — 임베드 자체는 열려 있음).
+- **`replay.<host>` 서브도메인 서빙**: 뷰어 정적 번들을 별도 오리진에 서빙 (Caddy 서버블록 + 자동 TLS / Cloudflare Tunnel 2nd hostname). 운영 docker-compose(app/dashboard/Caddy)도 아직 미코드화 — 함께 신설.
+- **참고**: 빌드타임 env는 `packages/dashboard/.env`(`VITE_REPLAY_ORIGIN`).
+
+**의존성**: 배포/오리진 구성. 운영 노출 전 처리.
 
 ---
 
