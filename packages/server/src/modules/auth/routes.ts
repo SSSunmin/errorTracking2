@@ -5,6 +5,7 @@ import { isProduction } from "../../config/env.js";
 import { unauthorized } from "../../lib/errors.js";
 import { refreshTokenTtlMs } from "../../lib/tokens.js";
 import {
+  changePassword,
   getCurrentUser,
   loginUser,
   registerUser,
@@ -13,6 +14,7 @@ import {
   updateProfile
 } from "./service.js";
 import {
+  changePasswordSchema,
   loginSchema,
   okResponseSchema,
   registerSchema,
@@ -180,6 +182,29 @@ export const authRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
       }
     },
     async (request) => updateProfile(getUserId(request), request.body)
+  );
+
+  app.patch(
+    "/me/password",
+    {
+      preHandler: [rateLimit, app.requireAuth],
+      schema: {
+        body: changePasswordSchema,
+        response: {
+          200: tokenResponseSchema
+        }
+      }
+    },
+    async (request, reply) => {
+      const tokens = await changePassword(getUserId(request), request.body);
+
+      reply.setCookie(refreshCookieName, tokens.refreshToken, refreshCookieOptions);
+
+      return reply.send({
+        accessToken: tokens.accessToken,
+        user: tokens.user
+      });
+    }
   );
 
   done();

@@ -9,8 +9,13 @@ import {
   issueAccessToken,
   verifyPassword
 } from "../../lib/tokens.js";
-import { conflict, unauthorized } from "../../lib/errors.js";
-import type { LoginInput, RegisterInput, UpdateProfileInput } from "./schemas.js";
+import { badRequest, conflict, unauthorized } from "../../lib/errors.js";
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  RegisterInput,
+  UpdateProfileInput
+} from "./schemas.js";
 
 const userSelect = {
   id: true,
@@ -150,6 +155,41 @@ export const updateProfile = async (
     }
     throw error;
   }
+};
+
+export const changePassword = async (
+  userId: string,
+  input: ChangePasswordInput
+): Promise<IssuedTokens> => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw unauthorized("Invalid access token");
+  }
+  if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    throw badRequest("Current password is incorrect");
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+
+  // Update the hash, revoke every existing session (so other devices are logged
+  // out), and mint a fresh pair for the current session — all atomically.
+  return prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await tx.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+
+    return issueTokenPair(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        createdAt: user.createdAt
+      },
+      tx
+    );
+  });
 };
 
 export const rotateRefreshToken = async (

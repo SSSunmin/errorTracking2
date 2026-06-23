@@ -18,15 +18,45 @@ const formatJoinDate = (iso: string): string =>
 // Account modal: shows the signed-in user's id/email/join date (read-only) and
 // lets them edit their own display name (PATCH /api/auth/me).
 const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, changePassword } = useAuth();
   const [name, setName] = useState(user?.name ?? "");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
+  const [currentPw, setCurrentPw] = useState("");
+  const [newPw, setNewPw] = useState("");
+  const [pwBusy, setPwBusy] = useState(false);
+  const [pwError, setPwError] = useState<string | null>(null);
+  const [pwDone, setPwDone] = useState(false);
+
   if (!user) {
     return null;
   }
+
+  const submitPassword = async (): Promise<void> => {
+    if (currentPw === "" || newPw === "") {
+      setPwError("현재 비밀번호와 새 비밀번호를 입력하세요.");
+      return;
+    }
+    if (newPw.length < 8) {
+      setPwError("새 비밀번호는 8자 이상이어야 합니다.");
+      return;
+    }
+    setPwBusy(true);
+    setPwError(null);
+    setPwDone(false);
+    try {
+      await changePassword(currentPw, newPw);
+      setCurrentPw("");
+      setNewPw("");
+      setPwDone(true);
+    } catch (err) {
+      setPwError(err instanceof ApiError ? err.message : "비밀번호 변경에 실패했습니다.");
+    } finally {
+      setPwBusy(false);
+    }
+  };
 
   const save = async (): Promise<void> => {
     const trimmed = name.trim();
@@ -47,12 +77,17 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
   };
 
   const copyId = (): void => {
-    void navigator.clipboard?.writeText(user.id).then(() => {
-      setCopied(true);
-      window.setTimeout(() => {
-        setCopied(false);
-      }, 1500);
-    });
+    void navigator.clipboard
+      ?.writeText(user.id)
+      .then(() => {
+        setCopied(true);
+        window.setTimeout(() => {
+          setCopied(false);
+        }, 1500);
+      })
+      .catch(() => {
+        // Clipboard blocked (permission / non-secure context): ignore silently.
+      });
   };
 
   return (
@@ -104,6 +139,7 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
           <input
             id="profile-name"
             type="text"
+            autoComplete="name"
             value={name}
             maxLength={120}
             disabled={busy}
@@ -115,6 +151,47 @@ const ProfileModal = ({ onClose }: { onClose: () => void }): ReactNode => {
           <div className="modal-actions">
             <button type="submit" className="primary" disabled={busy}>
               저장
+            </button>
+          </div>
+        </form>
+
+        <hr className="modal-divider" />
+
+        <form
+          className="modal-field"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void submitPassword();
+          }}
+        >
+          <span className="muted small">비밀번호 변경</span>
+          <input
+            type="password"
+            aria-label="현재 비밀번호"
+            placeholder="현재 비밀번호"
+            autoComplete="current-password"
+            value={currentPw}
+            disabled={pwBusy}
+            onChange={(event) => {
+              setCurrentPw(event.target.value);
+            }}
+          />
+          <input
+            type="password"
+            aria-label="새 비밀번호"
+            placeholder="새 비밀번호 (8자 이상)"
+            autoComplete="new-password"
+            value={newPw}
+            disabled={pwBusy}
+            onChange={(event) => {
+              setNewPw(event.target.value);
+            }}
+          />
+          {pwError && <span className="error small">{pwError}</span>}
+          {pwDone && <span className="muted small">비밀번호가 변경되었습니다.</span>}
+          <div className="modal-actions">
+            <button type="submit" className="primary" disabled={pwBusy}>
+              비밀번호 변경
             </button>
           </div>
         </form>

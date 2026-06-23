@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 
 import { buildApp } from "../app.js";
+import { refreshCookieName } from "../modules/auth/routes.js";
 import { tokenResponseSchema, userResponseSchema } from "../modules/auth/schemas.js";
 
 let app: FastifyInstance;
@@ -34,6 +35,24 @@ const patchName = (session: Session, name: unknown) =>
     url: "/api/auth/me",
     headers: authHeaders(session),
     payload: { name }
+  });
+
+const changePw = (
+  session: Session,
+  body: { currentPassword: string; newPassword: string }
+) =>
+  app.inject({
+    method: "PATCH",
+    url: "/api/auth/me/password",
+    headers: authHeaders(session),
+    payload: body
+  });
+
+const login = (email: string, password: string) =>
+  app.inject({
+    method: "POST",
+    url: "/api/auth/login",
+    payload: { email, password }
   });
 
 beforeEach(async () => {
@@ -92,6 +111,90 @@ describe("PATCH /api/auth/me (profile name)", () => {
       method: "PATCH",
       url: "/api/auth/me",
       payload: { name: "Nobody" }
+    });
+    expect(response.statusCode).toBe(401);
+  });
+});
+
+describe("PATCH /api/auth/me/password", () => {
+  test("changes the password: old fails, new works", async () => {
+    const email = "pw-change@example.com";
+    const session = await register(email);
+
+    const response = await changePw(session, {
+      currentPassword: "password123",
+      newPassword: "newpassword456"
+    });
+    expect(response.statusCode).toBe(200);
+    // Returns a fresh session (new access token + user).
+    expect(tokenResponseSchema.parse(response.json<unknown>()).user.email).toBe(email);
+
+    expect((await login(email, "password123")).statusCode).toBe(401);
+    expect((await login(email, "newpassword456")).statusCode).toBe(200);
+  });
+
+  test("rejects a wrong current password with 400", async () => {
+    const session = await register("pw-wrong@example.com");
+    const response = await changePw(session, {
+      currentPassword: "not-the-password",
+      newPassword: "newpassword456"
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test("rejects a too-short new password with 400", async () => {
+    const session = await register("pw-short@example.com");
+    const response = await changePw(session, {
+      currentPassword: "password123",
+      newPassword: "short"
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test("rejects a new password identical to the current one with 400", async () => {
+    const session = await register("pw-same@example.com");
+    const response = await changePw(session, {
+      currentPassword: "password123",
+      newPassword: "password123"
+    });
+    expect(response.statusCode).toBe(400);
+  });
+
+  test("revokes existing refresh tokens (other sessions) on change", async () => {
+    const email = "pw-revoke@example.com";
+    const registerResponse = await app.inject({
+      method: "POST",
+      url: "/api/auth/register",
+      payload: { email, password: "password123" }
+    });
+    const oldRefreshCookie = registerResponse.cookies.find(
+      (c) => c.name === refreshCookieName
+    );
+    if (!oldRefreshCookie) throw new Error("Expected a refresh cookie");
+    const session = {
+      accessToken: tokenResponseSchema.parse(registerResponse.json<unknown>()).accessToken,
+      userId: "n/a"
+    };
+
+    await changePw(session, {
+      currentPassword: "password123",
+      newPassword: "newpassword456"
+    });
+
+    // The refresh token issued at registration is now revoked.
+    const refresh = await app.inject({
+      method: "POST",
+      url: "/api/auth/refresh",
+      cookies: { [refreshCookieName]: oldRefreshCookie.value }
+    });
+    expect(refresh.statusCode).toBe(401);
+  });
+
+  test("requires authentication (401)", async () => {
+    const response = await app.inject({
+      method: "PATCH",
+      url: "/api/auth/me/password",
+      payload: { currentPassword: "password123", newPassword: "newpassword456" }
     });
     expect(response.statusCode).toBe(401);
   });

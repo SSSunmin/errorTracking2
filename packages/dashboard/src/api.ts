@@ -256,6 +256,14 @@ export const api = {
     request("/api/auth/logout", { method: "POST", retry: false }),
   updateProfile: (name: string): Promise<User> =>
     request("/api/auth/me", { method: "PATCH", body: { name } }),
+  changePassword: (
+    currentPassword: string,
+    newPassword: string
+  ): Promise<AuthResponse> =>
+    request("/api/auth/me/password", {
+      method: "PATCH",
+      body: { currentPassword, newPassword }
+    }),
 
   listProjects: (): Promise<{ projects: ProjectListItem[] }> =>
     request("/api/projects"),
