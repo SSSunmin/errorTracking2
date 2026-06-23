@@ -474,7 +474,7 @@ export const getIssueStats = async (
   projectId: string,
   issueId: string,
   query: IssueStatsQuery
-): Promise<{ buckets: { bucket: string; count: number }[] }> => {
+): Promise<{ buckets: { bucket: string; count: number }[]; affectedUsers: number }> => {
   await ensureOwnedIssue(ownerId, projectId, issueId);
 
   const now = new Date();
@@ -491,11 +491,23 @@ export const getIssueStats = async (
     ORDER BY bucket ASC
   `;
 
+  // Distinct affected users over the same window, keyed by userContext->>'id'
+  // (the SDK's user.id); events without a user.id are excluded.
+  const affected = await prisma.$queryRaw<{ count: bigint }[]>`
+    SELECT COUNT(DISTINCT "userContext"->>'id')::bigint AS count
+    FROM "Event"
+    WHERE "projectId" = ${projectId}
+      AND "issueId" = ${issueId}
+      AND "receivedAt" >= ${since}
+      AND "userContext"->>'id' IS NOT NULL
+  `;
+
   return {
     buckets: rows.map((row) => ({
       bucket: row.bucket.toISOString(),
       count: Number(row.count)
-    }))
+    })),
+    affectedUsers: Number(affected[0]?.count ?? 0)
   };
 };
 

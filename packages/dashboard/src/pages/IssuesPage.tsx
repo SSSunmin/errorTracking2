@@ -3,7 +3,7 @@ import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { api, type IssueLevel, type IssueStatus } from "../api";
-import { LevelBadge, relativeTime, Spinner, StatusBadge } from "../components";
+import { LevelBadge, relativeTime, Spinner, StatsChart, StatusBadge } from "../components";
 import { levelLabels, statusLabels } from "../labels";
 
 // A date input gives the user's local YYYY-MM-DD; expand it to an inclusive
@@ -26,6 +26,7 @@ export const IssuesPage = (): ReactNode => {
   const [text, setText] = useState("");
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState("lastSeen");
+  const [statsWindow, setStatsWindow] = useState<"24h" | "7d">("24h");
 
   const project = useQuery({
     queryKey: ["project", projectId],
@@ -34,6 +35,10 @@ export const IssuesPage = (): ReactNode => {
   const facets = useQuery({
     queryKey: ["issue-facets", projectId],
     queryFn: () => api.listIssueFacets(projectId)
+  });
+  const projectStats = useQuery({
+    queryKey: ["projectStats", projectId, statsWindow],
+    queryFn: () => api.getProjectStats(projectId, statsWindow)
   });
   const issues = useQuery({
     queryKey: [
@@ -77,6 +82,43 @@ export const IssuesPage = (): ReactNode => {
           </Link>
         </div>
       </div>
+
+      <section className="card">
+        <div className="card-head">
+          <h3>이벤트 추세</h3>
+          <div className="tabs small">
+            <button
+              type="button"
+              className={statsWindow === "24h" ? "active" : ""}
+              onClick={() => {
+                setStatsWindow("24h");
+              }}
+            >
+              24h
+            </button>
+            <button
+              type="button"
+              className={statsWindow === "7d" ? "active" : ""}
+              onClick={() => {
+                setStatsWindow("7d");
+              }}
+            >
+              7d
+            </button>
+          </div>
+        </div>
+        {projectStats.data ? (
+          <>
+            <StatsChart buckets={projectStats.data.buckets} />
+            <p className="muted">
+              전체 {projectStats.data.totalEvents}건 · 영향 사용자{" "}
+              {projectStats.data.affectedUsers}명
+            </p>
+          </>
+        ) : (
+          <Spinner />
+        )}
+      </section>
 
       <div className="filters">
         <select

@@ -544,7 +544,7 @@ export const IssueDetailPage = (): ReactNode => {
   const { projectId = "", issueId = "" } = useParams();
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [window, setWindow] = useState<"24h" | "7d">("24h");
+  const [statsWindow, setStatsWindow] = useState<"24h" | "7d">("24h");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
 
   const issue = useQuery({
@@ -556,8 +556,8 @@ export const IssueDetailPage = (): ReactNode => {
     queryFn: () => api.listMembers(projectId)
   });
   const stats = useQuery({
-    queryKey: ["stats", projectId, issueId, window],
-    queryFn: () => api.getStats(projectId, issueId, window)
+    queryKey: ["stats", projectId, issueId, statsWindow],
+    queryFn: () => api.getStats(projectId, issueId, statsWindow)
   });
   const events = useQuery({
     queryKey: ["events", projectId, issueId],
@@ -679,25 +679,32 @@ export const IssueDetailPage = (): ReactNode => {
           <div className="tabs small">
             <button
               type="button"
-              className={window === "24h" ? "active" : ""}
+              className={statsWindow === "24h" ? "active" : ""}
               onClick={() => {
-                setWindow("24h");
+                setStatsWindow("24h");
               }}
             >
               24h
             </button>
             <button
               type="button"
-              className={window === "7d" ? "active" : ""}
+              className={statsWindow === "7d" ? "active" : ""}
               onClick={() => {
-                setWindow("7d");
+                setStatsWindow("7d");
               }}
             >
               7d
             </button>
           </div>
         </div>
-        {stats.data ? <StatsChart buckets={stats.data.buckets} /> : <Spinner />}
+        {stats.data ? (
+          <>
+            <StatsChart buckets={stats.data.buckets} />
+            <p className="muted">영향 사용자 {stats.data.affectedUsers}명</p>
+          </>
+        ) : (
+          <Spinner />
+        )}
       </section>
 
       {events.isLoading && (

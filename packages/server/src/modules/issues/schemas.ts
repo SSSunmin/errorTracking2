@@ -186,7 +186,11 @@ export const issueStatsResponseSchema = z.object({
       bucket: z.string(),
       count: z.number().int()
     })
-  )
+  ),
+  // Distinct users affected within the window, counted by userContext->>'id'
+  // (the SDK's user.id). Events without a user.id are excluded; email/other
+  // fallbacks are out of scope.
+  affectedUsers: z.number().int()
 });
 
 export const updateIssueResponseSchema = z.object({

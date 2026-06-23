@@ -8,6 +8,7 @@ import { buildDsn } from "../keys/dsn.js";
 import type {
   CreateProjectInput,
   CreateProjectKeyInput,
+  ProjectStatsQuery,
   UpdateProjectInput,
   UpdateProjectKeyInput
 } from "./schemas.js";
@@ -270,6 +271,59 @@ export const getProject = async (
 ): Promise<{ project: ProjectDto }> => ({
   project: toProjectDto(await getOwnedProject(projectId, ownerId))
 });
+
+export const getProjectStats = async (
+  ownerId: string,
+  projectId: string,
+  query: ProjectStatsQuery
+): Promise<{
+  buckets: { bucket: string; count: number }[];
+  totalEvents: number;
+  affectedUsers: number;
+}> => {
+  // Ownership check (404 when not owned), same pattern as getProject.
+  await getOwnedProject(projectId, ownerId);
+
+  const now = new Date();
+  const windowMs =
+    query.window === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
+  const since = new Date(now.getTime() - windowMs);
+  const truncUnit = query.window === "24h" ? "hour" : "day";
+
+  // Bucketed counts over the whole project's events in the window.
+  const rows = await prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
+    SELECT date_trunc(${truncUnit}, "receivedAt") AS bucket, COUNT(*)::bigint AS count
+    FROM "Event"
+    WHERE "projectId" = ${projectId}
+      AND "receivedAt" >= ${since}
+    GROUP BY bucket
+    ORDER BY bucket ASC
+  `;
+
+  // Distinct affected users keyed by userContext->>'id' (the SDK's user.id);
+  // events without a user.id excluded. Parenthesize the aggregate before the
+  // cast so ::bigint applies to COUNT(...) FILTER(...) as a whole.
+  const userRows = await prisma.$queryRaw<{ users: bigint }[]>`
+    SELECT (COUNT(DISTINCT "userContext"->>'id')
+      FILTER (WHERE "userContext"->>'id' IS NOT NULL))::bigint AS users
+    FROM "Event"
+    WHERE "projectId" = ${projectId}
+      AND "receivedAt" >= ${since}
+  `;
+
+  const buckets = rows.map((row) => ({
+    bucket: row.bucket.toISOString(),
+    count: Number(row.count)
+  }));
+
+  return {
+    buckets,
+    // Derive from the buckets so totalEvents and the chart never disagree
+    // (no second COUNT(*) that could race a concurrent insert).
+    totalEvents: buckets.reduce((sum, b) => sum + b.count, 0),
+    affectedUsers: Number(userRows[0]?.users ?? 0)
+  };
+};
 
 export const updateProject = async (
   ownerId: string,
