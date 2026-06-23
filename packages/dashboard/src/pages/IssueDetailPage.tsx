@@ -1,12 +1,22 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
-import { createCache, Mirror, rebuildIntoSandboxedIframe } from "rrweb-snapshot";
-import { EventType, Replayer, ReplayerEvents } from "rrweb";
 import "rrweb/dist/style.css";
 
 import { api, type EventSnapshot, type IssueStatus, type ReplayEvent } from "../api";
 import { LevelBadge, relativeTime, Spinner, StatsChart, StatusBadge } from "../components";
+import { replayOrigin } from "../replay/config";
+import {
+  isAllowedOrigin,
+  parseViewerOutbound,
+  type ViewerInbound
+} from "../replay/messaging";
+import {
+  mountReplay,
+  mountSnapshot,
+  type ReplayController,
+  type ReplayUiStatus
+} from "../replay/render";
 
 interface Frame {
   function?: string;
@@ -120,15 +130,98 @@ const KeyValues = ({ data }: { data: Record<string, unknown> }): ReactNode => {
   );
 };
 
-type RebuildNode = Parameters<typeof rebuildIntoSandboxedIframe>[0];
+// ── Replay / snapshot rendering ───────────────────────────────────────────────
+// Two modes chosen by replayOrigin (VITE_REPLAY_ORIGIN). Empty (default, incl.
+// local dev): recordings render in-page on the dashboard origin behind rrweb's
+// no-allow-scripts sandbox via the shared mountSnapshot/mountReplay core. Set:
+// they render in a cross-origin iframe served from that origin and receive their
+// data over a postMessage bridge, isolating untrusted recordings from the
+// dashboard's token, DOM and /api. Both modes share render.ts so playback and
+// scaling behave identically.
 
-/** Render a captured DOM snapshot into a sandboxed iframe (no allow-scripts, so
- *  any captured inline scripts cannot execute). rrweb-snapshot's rebuild() only
- *  accepts a document created by its own sandboxed-iframe helper, so we let the
- *  library build and register the iframe (sandbox = "allow-same-origin") into a
- *  container. Rebuild errors degrade to a muted line rather than breaking the
- *  page. */
-const SnapshotFrame = ({
+/** Embeds the isolated viewer and bridges one payload to it: waits for the
+ *  viewer's "ready", forwards the data to the viewer origin, and resizes the
+ *  iframe to the rendered height. The payload is read through a ref so a new
+ *  render doesn't re-run the bridge (each section remounts by event id). */
+const ViewerFrame = ({
+  origin,
+  payload,
+  className,
+  title
+}: {
+  origin: string;
+  payload: ViewerInbound;
+  className: string;
+  title: string;
+}): ReactNode => {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const payloadRef = useRef(payload);
+  payloadRef.current = payload;
+
+  useEffect(() => {
+    const iframe = iframeRef.current;
+    if (!iframe) {
+      return;
+    }
+    let sent = false;
+    // The viewer's one-shot "ready" message and the iframe's load event race;
+    // whichever fires first forwards the payload and the guard makes the other
+    // a no-op, so the viewer renders exactly once and we never miss "ready".
+    const sendPayload = (): void => {
+      if (sent) {
+        return;
+      }
+      sent = true;
+      iframe.contentWindow?.postMessage(payloadRef.current, origin);
+    };
+    const onMessage = (event: MessageEvent): void => {
+      if (event.source !== iframe.contentWindow) {
+        return;
+      }
+      if (!isAllowedOrigin(event.origin, origin)) {
+        return;
+      }
+      const message = parseViewerOutbound(event.data);
+      if (!message) {
+        return;
+      }
+      if (message.kind === "ready") {
+        sendPayload();
+      } else {
+        iframe.style.height = `${String(message.height)}px`;
+      }
+    };
+    window.addEventListener("message", onMessage);
+    // By the load event the viewer's module — and its message listener — has run,
+    // so posting here is reliable even if the one-shot "ready" was missed.
+    iframe.addEventListener("load", sendPayload);
+    return () => {
+      window.removeEventListener("message", onMessage);
+      iframe.removeEventListener("load", sendPayload);
+    };
+    // payload changes are handled by remounting the section (key by event id),
+    // so this bridge only re-runs when the viewer origin changes.
+  }, [origin]);
+
+  const src = `${origin}/replay-viewer.html?parent=${encodeURIComponent(window.location.origin)}`;
+  return (
+    <iframe
+      ref={iframeRef}
+      src={src}
+      className={className}
+      title={title}
+      // Cross-origin already isolates the viewer; sandbox additionally drops
+      // popups/top-navigation/forms. allow-same-origin keeps the viewer on its
+      // OWN origin (replay.<host>) — not the dashboard's — which rrweb needs for
+      // its allow-same-origin replay iframe.
+      sandbox="allow-scripts allow-same-origin"
+      style={{ width: "100%", border: 0 }}
+    />
+  );
+};
+
+/** In-page snapshot render (dashboard origin) behind rrweb's sandbox. */
+const SnapshotFrameInline = ({
   data,
   width,
   height
@@ -145,39 +238,9 @@ const SnapshotFrame = ({
     if (!container) {
       return;
     }
-    setFailed(false);
-    container.replaceChildren();
-    try {
-      const { iframe } = rebuildIntoSandboxedIframe(data as RebuildNode, {
-        root: container,
-        cache: createCache(),
-        mirror: new Mirror()
-      });
-      // Lay the capture out at its original viewport size, then scale the whole
-      // frame down to fit the card width so it reads like a page thumbnail.
-      const captureW = width && width > 0 ? width : 1280;
-      const captureH = height && height > 0 ? height : 800;
-      iframe.setAttribute("scrolling", "no");
-      iframe.style.border = "0";
-      iframe.style.width = `${String(captureW)}px`;
-      iframe.style.height = `${String(captureH)}px`;
-      iframe.style.transformOrigin = "top left";
-      iframe.style.pointerEvents = "none";
-
-      const fit = (): void => {
-        const scale = container.clientWidth / captureW;
-        iframe.style.transform = `scale(${String(scale)})`;
-        container.style.height = `${String(captureH * scale)}px`;
-      };
-      fit();
-      const observer = new ResizeObserver(fit);
-      observer.observe(container);
-      return () => {
-        observer.disconnect();
-      };
-    } catch {
-      setFailed(true);
-    }
+    const mounted = mountSnapshot(container, { data, width, height });
+    setFailed(mounted.failed);
+    return mounted.destroy;
   }, [data, width, height]);
 
   return (
@@ -187,6 +250,26 @@ const SnapshotFrame = ({
     </>
   );
 };
+
+const SnapshotFrame = ({
+  data,
+  width,
+  height
+}: {
+  data: unknown;
+  width: number | null;
+  height: number | null;
+}): ReactNode =>
+  replayOrigin ? (
+    <ViewerFrame
+      origin={replayOrigin}
+      payload={{ kind: "snapshot", data, width, height }}
+      className="snapshot-frame"
+      title="스냅샷"
+    />
+  ) : (
+    <SnapshotFrameInline data={data} width={width} height={height} />
+  );
 
 const SnapshotSection = ({
   projectId,
@@ -223,205 +306,87 @@ const SnapshotSection = ({
   );
 };
 
-type ReplayStatus = "idle" | "playing" | "paused" | "finished";
-
-/** Plays a recorded rrweb session with rrweb's Replayer, mounted imperatively
- *  into a container ref and CSS-scaled to fit the card. Playback does NOT start
- *  automatically: the Replayer renders the first frame on construction and waits
- *  for the user to press play; when playback finishes a "replay from start"
- *  control appears. Construction is try/catch wrapped so a malformed recording
- *  degrades to a muted line instead of breaking the page; teardown destroys the
- *  player (clearing its timer and listeners) and the container. */
-const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode => {
+/** In-page replay player (dashboard origin). Mounts the shared rrweb core, which
+ *  paints the first frame paused and waits for the user to drive playback; the
+ *  controller pushes status changes so the controls below stay in sync. */
+const ReplayPlayerInline = ({ events }: { events: ReplayEvent[] }): ReactNode => {
   const containerRef = useRef<HTMLDivElement>(null);
-  const replayerRef = useRef<Replayer | null>(null);
-  const [failed, setFailed] = useState(false);
-  const [status, setStatus] = useState<ReplayStatus>("idle");
+  const controllerRef = useRef<ReplayController | null>(null);
+  const [status, setStatus] = useState<ReplayUiStatus>("idle");
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) {
       return;
     }
-    setFailed(false);
+    // Clear any lingering failed/finished status before re-initializing so a
+    // stale message can't flash over a fresh recording.
     setStatus("idle");
-    container.replaceChildren();
-
-    // Newer recordings include the real Meta event, which carries the recorded
-    // viewport size rrweb uses to size/build the replay iframe. Older recordings
-    // may still start at a full snapshot, so synthesize a placeholder only for
-    // that backward-compat path.
-    // After the SDK trim, the leading event is the Meta paired with the first
-    // FullSnapshot, so the first Meta carries the correct recorded viewport.
-    const meta = events.find((event) => event.type === (EventType.Meta as number));
-    const metaData = asRecord(meta?.data);
-    const metaWidth =
-      typeof metaData.width === "number" && metaData.width > 0
-        ? metaData.width
-        : null;
-    const metaHeight =
-      typeof metaData.height === "number" && metaData.height > 0
-        ? metaData.height
-        : null;
-    const viewportWidth = metaWidth ?? 1280;
-    const viewportHeight = metaHeight ?? 720;
-
-    const first = events[0];
-    const playerEvents: ReplayEvent[] =
-      meta === undefined && first?.type === EventType.FullSnapshot
-        ? [
-            {
-              type: EventType.Meta,
-              data: { href: "", width: viewportWidth, height: viewportHeight },
-              timestamp: first.timestamp
-            },
-            ...events
-          ]
-        : events;
-
-    let replayer: Replayer | null = null;
-    let observer: ResizeObserver | null = null;
-    try {
-      // SECURITY: rrweb replays into an `allow-same-origin`-only sandboxed iframe
-      // (no allow-scripts), so scripts captured from the recorded page do NOT
-      // execute — the DOM is rebuilt by the parent frame via DOM APIs. The
-      // console may log a benign "Blocked script execution" per captured
-      // <script>; that's the sandbox doing its job. Do NOT pass
-      // UNSAFE_replayCanvas (it adds allow-scripts → captured DOM could run in
-      // the dashboard origin → stored XSS); for untrusted recordings in
-      // production, serve the replay view from a separate origin.
-      // skipInactive fast-forwards through idle gaps. rrweb records nothing while
-      // the page is idle, so a recording that spans a long pause (user loads the
-      // page, walks away, comes back) stores a multi-minute gap between the first
-      // snapshot and the next activity. Without this the player renders the first
-      // frame and then sits in real time waiting out the gap, which looks frozen.
-      replayer = new Replayer(
-        playerEvents as unknown as ConstructorParameters<typeof Replayer>[0],
-        { root: container, mouseTail: false, speed: 1, skipInactive: true }
-      );
-      replayerRef.current = replayer;
-      // Don't auto-play: construction already paints the first frame, so we leave
-      // the player paused at the start and let the user press play. Surface the
-      // end of playback so the UI can offer a "replay from start" control.
-      replayer.on(ReplayerEvents.Finish, () => {
-        setStatus("finished");
-      });
-      // Fit the recorded viewport to the card width by CSS-scaling the wrapper.
-      // The recorded viewport can change mid-replay (window resize, or a first
-      // snapshot with no Meta that rrweb later resizes), and rrweb resizes the
-      // iframe on each Meta/ViewportResize event. Scaling by a single fixed width
-      // would then mismatch the live iframe size, so the replayed cursor — laid
-      // out in current-viewport pixels inside the wrapper — drifts on the
-      // segments whose size differs. Track the current dimensions from rrweb's
-      // Resize event and re-fit, so the scale always matches the live iframe.
-      let viewW = viewportWidth;
-      let viewH = viewportHeight;
-      const fit = (): void => {
-        const wrapper = container.querySelector<HTMLElement>(".replayer-wrapper");
-        if (!wrapper || container.clientWidth === 0) {
-          return;
-        }
-        const scale = container.clientWidth / viewW;
-        wrapper.style.transformOrigin = "top left";
-        wrapper.style.transform = `scale(${String(scale)})`;
-        container.style.height = `${String(Math.round(viewH * scale))}px`;
-      };
-      // rrweb emits Resize for the initial Meta and every viewport change during
-      // playback; mirror those dimensions so the scale stays aligned to the
-      // cursor's coordinate space.
-      replayer.on(ReplayerEvents.Resize, (payload: unknown) => {
-        const dimension = asRecord(payload);
-        if (typeof dimension.width === "number" && dimension.width > 0) {
-          viewW = dimension.width;
-        }
-        if (typeof dimension.height === "number" && dimension.height > 0) {
-          viewH = dimension.height;
-        }
-        fit();
-      });
-      fit();
-      observer = new ResizeObserver(fit);
-      observer.observe(container);
-    } catch (err) {
-      // Surface the real reason in the console while degrading gracefully in UI.
-      console.error("rrweb Replayer failed to initialize", err);
-      setFailed(true);
-    }
-
+    const controller = mountReplay(container, events, setStatus);
+    controllerRef.current = controller;
     return () => {
-      observer?.disconnect();
-      try {
-        // destroy() pauses the timer, resets state, removes the wrapper from the
-        // DOM and detaches rrweb's internal listeners — the proper teardown so a
-        // stale Finish/Resize handler from a replaced recording can't fire into
-        // the next effect. replaceChildren() below is a belt-and-suspenders clear.
-        replayer?.destroy();
-      } catch {
-        /* ignore teardown failures */
-      }
-      replayerRef.current = null;
-      container.replaceChildren();
+      controller.destroy();
+      controllerRef.current = null;
     };
   }, [events]);
-
-  const playFromStart = (): void => {
-    try {
-      replayerRef.current?.play(0);
-      setStatus("playing");
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const pause = (): void => {
-    try {
-      replayerRef.current?.pause();
-      setStatus("paused");
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const resume = (): void => {
-    try {
-      const replayer = replayerRef.current;
-      if (replayer) {
-        // Resume from where we paused rather than restarting at 0.
-        replayer.play(replayer.getCurrentTime());
-        setStatus("playing");
-      }
-    } catch {
-      /* ignore */
-    }
-  };
 
   return (
     <>
       <div ref={containerRef} className="replay-player" />
-      {!failed && status === "idle" && (
-        <button type="button" className="ghost small replay-restart" onClick={playFromStart}>
+      {status === "idle" && (
+        <button
+          type="button"
+          className="ghost small replay-restart"
+          onClick={() => controllerRef.current?.play()}
+        >
           ▶ 재생
         </button>
       )}
-      {!failed && status === "playing" && (
-        <button type="button" className="ghost small replay-restart" onClick={pause}>
+      {status === "playing" && (
+        <button
+          type="button"
+          className="ghost small replay-restart"
+          onClick={() => controllerRef.current?.pause()}
+        >
           ⏸ 일시정지
         </button>
       )}
-      {!failed && status === "paused" && (
-        <button type="button" className="ghost small replay-restart" onClick={resume}>
+      {status === "paused" && (
+        <button
+          type="button"
+          className="ghost small replay-restart"
+          onClick={() => controllerRef.current?.resume()}
+        >
           ▶ 이어보기
         </button>
       )}
-      {!failed && status === "finished" && (
-        <button type="button" className="ghost small replay-restart" onClick={playFromStart}>
+      {status === "finished" && (
+        <button
+          type="button"
+          className="ghost small replay-restart"
+          onClick={() => controllerRef.current?.play()}
+        >
           ↻ 처음부터 재생
         </button>
       )}
-      {failed && <p className="muted small">리플레이를 재생할 수 없습니다.</p>}
+      {status === "failed" && (
+        <p className="muted small">리플레이를 재생할 수 없습니다.</p>
+      )}
     </>
   );
 };
+
+const ReplayPlayer = ({ events }: { events: ReplayEvent[] }): ReactNode =>
+  replayOrigin ? (
+    <ViewerFrame
+      origin={replayOrigin}
+      payload={{ kind: "replay", events }}
+      className="replay-player"
+      title="리플레이"
+    />
+  ) : (
+    <ReplayPlayerInline events={events} />
+  );
 
 const ReplaySection = ({
   projectId,

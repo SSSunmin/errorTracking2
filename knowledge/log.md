@@ -2,6 +2,11 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P1 리플레이 오리진 격리 — feat/replay-origin-isolation)
+- **대시보드(`architecture/dashboard`)**: 스냅샷·리플레이 렌더링을 `VITE_REPLAY_ORIGIN` env로 두 모드 전환하도록 문서화. (1) rrweb 마운트/스케일 로직을 `src/replay/render.ts`(`mountSnapshot`/`mountReplay`)로 단일화 — 인페이지·격리 뷰어가 동일 코어 사용. (2) env 비어있으면 기존처럼 대시보드 오리진 인페이지 렌더, 설정 시 별도 오리진(`replay-viewer.html`, Vite 2nd 엔트리)에서 cross-origin iframe + postMessage 브리지로 격리 — 뷰어는 토큰·네트워크 없음, `event.origin`을 `?parent=` 대조 검증, 명시 targetOrigin(절대 `*` 아님). (3) postMessage 프로토콜·origin 검증을 `src/replay/messaging.ts` 순수함수로 분리해 `messaging.test.ts` 12개로 검증. (4) 뷰어에 CSP `<meta>` 심층방어. 기존 known-limitation("별도 오리진 미구현")을 구현 완료 + 배포계층 follow-up(`replay.<host>` 서빙·`frame-ancestors` 헤더)으로 갱신.
+- **범위**: 앱 계층 격리만(사용자 결정). 배포 인프라(Caddy 서버블록·운영 compose·Tunnel 2nd hostname·`frame-ancestors` 헤더)는 후속 티켓. 로컬 dev는 env 미설정으로 same-origin 유지(마찰 0).
+- **코드**: `packages/dashboard` — `src/replay/{render,messaging,config}.ts`·`messaging.test.ts`·`replay-viewer/main.ts`·`replay-viewer.html` 신규, `IssueDetailPage.tsx`(인페이지/iframe 분기), `vite.config.ts`(멀티페이지 입력), `vite-env.d.ts`·`.env.example` 신규. typecheck·lint·build·전체 테스트(138개) 그린.
+
 ## 2026-06-22 (P0 retention 구현 — feat/retention-pruning)
 - **개념 신규(`ops/retention`)**: 데이터 보존/정리 메커니즘 문서화. env 6종(`RETENTION_ENABLED`/`_REPLAY_DAYS`/`_SNAPSHOT_DAYS`/`_EVENT_DAYS`/`_BATCH_SIZE`/`_CRON`), 삭제 순서(EventReplay 독립→EventSnapshot→Event cascade)와 근거(EventReplay는 Event와 FK 없음·`days<=0` 비활성·배치 삭제로 lock 회피), BullMQ retention 큐 + `upsertJobScheduler` 멱등 스케줄 + concurrency 1 Worker, 인덱스 마이그레이션, 알려진 한계(autovacuum 디스크 회수·대규모 EXPLAIN 미검증·스케줄 실패 로그만) 명시.
 - **DB**: `EventReplay`·`EventSnapshot`에 `@@index([createdAt])` 추가(마이그레이션 `20260622063456_add_retention_indexes`). `Event`는 기존 `[projectId, receivedAt]`로 커버.

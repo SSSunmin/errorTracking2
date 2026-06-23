@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: React 대시보드
-description: packages/dashboard. React + Vite + TanStack Query + React Router SPA. 인메모리 액세스 토큰 + 리프레시 쿠키, 코얼레스드 refresh, 페이지별 구성. IssueDetailPage에서 DOM 스냅샷(feature B)을 sandboxed iframe으로, 세션 리플레이(feature C)를 rrweb Replayer로 렌더링. 심볼리케이션된 프레임의 원본 위치 우선 표시.
+description: packages/dashboard. React + Vite + TanStack Query + React Router SPA. 인메모리 액세스 토큰 + 리프레시 쿠키, 코얼레스드 refresh, 페이지별 구성. IssueDetailPage에서 DOM 스냅샷(feature B)을 sandboxed iframe으로, 세션 리플레이(feature C)를 rrweb Replayer로 렌더링. 신뢰 못 할 녹화는 VITE_REPLAY_ORIGIN으로 별도 오리진 iframe+postMessage 격리(P1). 심볼리케이션된 프레임의 원본 위치 우선 표시.
 resource: packages/dashboard/src/App.tsx
-tags: [dashboard, react, vite, tanstack-query, spa, auth, snapshot, replay, rrweb, symbolication]
-timestamp: 2026-06-22
+tags: [dashboard, react, vite, tanstack-query, spa, auth, snapshot, replay, rrweb, symbolication, origin-isolation, csp, postmessage]
+timestamp: 2026-06-23
 ---
 
 # React 대시보드 (`packages/dashboard`)
@@ -74,23 +74,32 @@ N개의 병렬 401이 단 1회의 토큰 회전만 발생시킨다.
 - 이벤트 빈도 차트 (24h | 7d 토글, `StatsChart` 컴포넌트)
 - 이벤트 선택기 — 이벤트 목록을 드롭다운/이전·다음 버튼으로 탐색하고 선택한 이벤트의 상세(스택트레이스, breadcrumbs, tags, userContext, 환경)를 렌더링
 - `useMutation` + `queryClient.invalidateQueries`로 낙관적 갱신
+- **rrweb 렌더 코어 공유 (`src/replay/render.ts`, P1)**: 스냅샷·리플레이의 rrweb 마운트/스케일 로직은 `render.ts`의 `mountSnapshot` / `mountReplay`로 단일화돼 있다(프레임워크·DOM 비의존). 인페이지 렌더와 격리 뷰어가 같은 코어를 써서 재생·스케일 동작(특히 커서 정렬을 좌우하는 뷰포트 스케일링, 커밋 ca13901·18e2c67)이 두 경로에서 동일하다.
 - **DOM 스냅샷 렌더링** (`SnapshotSection` / `SnapshotFrame`, feature B):
   - 선택한 이벤트의 `hasSnapshot === true`일 때 `SnapshotSection`이 렌더링된다.
   - `api.getEventSnapshot(projectId, issueId, eventId)` 호출 (`TanStack Query`, `staleTime: Infinity` — ~1MB 블롭 재요청 방지).
-  - `SnapshotFrame`이 `rebuildIntoSandboxedIframe(data, { root, cache, mirror })`를 호출해 rrweb-snapshot이 생성한 sandboxed iframe(`sandbox="allow-same-origin"`, 스크립트 실행 없음)에 DOM을 재현한다.
+  - `mountSnapshot`이 `rebuildIntoSandboxedIframe(data, { root, cache, mirror })`를 호출해 rrweb-snapshot이 생성한 sandboxed iframe(`sandbox="allow-same-origin"`, 스크립트 실행 없음)에 DOM을 재현한다.
   - 재현 실패 시 "스냅샷을 표시할 수 없습니다." 안내 메시지로 graceful degrade.
   - 의존성: `rrweb-snapshot` (dashboard `package.json`).
 - **세션 리플레이 렌더링** (`ReplaySection` / `ReplayPlayer`, feature C):
   - 선택한 이벤트의 `hasReplay === true`일 때 `ReplaySection`이 렌더링된다.
   - `api.getEventReplay(projectId, issueId, eventId)` 호출 (`TanStack Query`, `staleTime: Infinity`). 404는 `null`로 처리해 에러로 throw하지 않는다.
-  - `ReplayPlayer`가 rrweb `Replayer`를 사용해 DOM을 재생한다(`rrweb/dist/style.css` 임포트). rrweb-player(별도 패키지)가 아닌 rrweb 내장 `Replayer` 직접 사용.
-  - **뷰포트 크기 결정 (fix/replay-viewport-meta)**: SDK trim 수정으로 업로드 스트림이 이제 `[Meta(4), FullSnapshot(2), ...]`으로 시작한다. `ReplayPlayer`는 스트림에서 첫 번째 Meta 이벤트를 찾아(`events.find(e => e.type === EventType.Meta)`) `data.width` / `data.height`를 실제 녹화 뷰포트로 사용한다. Meta가 없거나(`meta === undefined`) 값이 0 이하이면 `1280×720` placeholder로 fallback한다(이전 녹화 backward-compat). placeholder는 Meta 없이 FullSnapshot으로 시작하는 스트림에만 합성 삽입한다.
-  - `Replayer` 옵션: `{ root: container, mouseTail: false, speed: 1 }`. 생성 직후 `.play()` 호출. `.replayer-wrapper`를 실제(또는 fallback) 뷰포트 기준으로 카드 너비에 맞게 scale down(`ResizeObserver`로 재조정).
-  - "↻ 처음부터 재생" 버튼: `replayerRef.current?.play(0)`.
+  - `mountReplay`가 rrweb `Replayer`를 사용해 DOM을 재생한다(`rrweb/dist/style.css` 임포트). rrweb-player(별도 패키지)가 아닌 rrweb 내장 `Replayer` 직접 사용.
+  - **뷰포트 크기 결정 (fix/replay-viewport-meta)**: SDK trim 수정으로 업로드 스트림이 이제 `[Meta(4), FullSnapshot(2), ...]`으로 시작한다. `mountReplay`는 스트림에서 첫 번째 Meta 이벤트를 찾아(`events.find(e => e.type === EventType.Meta)`) `data.width` / `data.height`를 실제 녹화 뷰포트로 사용한다. Meta가 없거나(`meta === undefined`) 값이 0 이하이면 `1280×720` placeholder로 fallback한다(이전 녹화 backward-compat). placeholder는 Meta 없이 FullSnapshot으로 시작하는 스트림에만 합성 삽입한다.
+  - `Replayer` 옵션: `{ root: container, mouseTail: false, speed: 1, skipInactive: true }`. 생성 직후 첫 프레임만 paused로 그리고 사용자가 재생을 누른다(자동재생 안 함). `.replayer-wrapper`를 rrweb `Resize` 이벤트의 현재 뷰포트 기준으로 카드 너비에 맞게 scale down(`ResizeObserver`로 재조정).
+  - 재생 컨트롤은 `mountReplay`가 반환하는 컨트롤러(`play`/`pause`/`resume`/`destroy`)로 구동되고, 상태(idle/playing/paused/finished/failed)는 콜백으로 UI에 전달된다.
   - 초기화 실패 시 "리플레이를 재생할 수 없습니다." 안내로 graceful degrade.
-  - sandbox: `allow-same-origin`만 허용 — 캡처된 `<script>`가 실행되지 않는다. `UNSAFE_replayCanvas` 미사용.
   - 의존성: `rrweb` (dashboard `package.json`, `rrweb/dist/style.css`포함).
-  - **known limitation**: 실제 서비스에서 신뢰할 수 없는 녹화는 별도 오리진에서 서빙해야 stored XSS 위험을 차단할 수 있다(현재 미구현).
+- **오리진 격리 (stored-XSS 하드닝, P1)** — `VITE_REPLAY_ORIGIN`으로 두 모드 전환:
+  - **비어 있음(기본, 로컬 dev)**: 스냅샷·리플레이를 대시보드 오리진에서 인페이지 렌더(위 `mountSnapshot`/`mountReplay`). rrweb의 `allow-same-origin`-only sandbox(no `allow-scripts`)가 캡처 `<script>` 실행을 차단 — 액티브 XSS는 막히지만 같은 오리진이라 회귀(`UNSAFE_replayCanvas`/`allow-scripts` 추가) 시 위험.
+  - **설정 시(staging/prod, 예 `https://replay.example.com`)**: `SnapshotFrame`/`ReplayPlayer`가 그 오리진에서 서빙되는 `replay-viewer.html`(별도 Vite 엔트리, `src/replay-viewer/main.ts`)을 cross-origin iframe으로 임베드한다. 데이터 흐름:
+    1. 부모(대시보드)가 Bearer 토큰으로 replay/snapshot을 fetch.
+    2. 뷰어가 로드되면 `{kind:"ready"}`를 부모에 postMessage.
+    3. 부모가 데이터를 **명시 targetOrigin**으로 뷰어에 postMessage(절대 `"*"` 미사용). 뷰어는 `event.origin`을 `?parent=` 쿼리의 대시보드 오리진과 대조해 검증(`isAllowedOrigin`, 빈 값이면 fail-closed). 뷰어는 자기 오리진에 **API 토큰이 없고 네트워크도 안 쓴다** → 신뢰 못 할 녹화가 토큰·DOM·`/api`에 도달 불가.
+    4. 뷰어가 렌더 높이를 `{kind:"resize"}`로 보고 → 부모가 iframe 높이 조정.
+  - postMessage 프로토콜·origin 검증은 `src/replay/messaging.ts`의 순수 함수(`isAllowedOrigin`/`parseViewerInbound`/`parseViewerOutbound`)로 분리돼 단위 테스트(`messaging.test.ts`)로 검증된다.
+  - 뷰어 `replay-viewer.html`에 CSP `<meta>`(`default-src 'none'; script-src 'self'; connect-src 'none'` 등)로 심층방어.
+  - **남은 follow-up(배포 계층, 이번 범위 제외)**: `replay.<host>` 서브도메인 서빙(Caddy 서버블록 / Cloudflare Tunnel 2nd hostname)과 뷰어 응답에 `Content-Security-Policy: frame-ancestors <dashboard-origin>` 헤더(임베드 가능 오리진 고정·클릭재킹 차단) — `frame-ancestors`는 `<meta>`로 설정 불가하므로 서빙 계층에서 헤더로 줘야 한다.
 - **스택트레이스 심볼리케이션 렌더링** (`IssueDetailPage`, `frames` 섹션):
   - 서버가 `EventDetail.stacktrace.frames[]`에 `originalFilename` 등 원본 위치 필드를 채워 보내면, 대시보드는 이를 우선 표시한다.
   - **함수명**: `frame.originalFunction`이 있으면 우선 사용, 없으면 `frame.function` fallback, 없으면 `<anonymous>`.
