@@ -144,6 +144,11 @@ export const listIssuesResponseSchema = z.object({
   nextCursor: z.string().nullable()
 });
 
+export const issueFacetsResponseSchema = z.object({
+  releases: z.array(z.string()),
+  environments: z.array(z.string())
+});
+
 export const issueDetailResponseSchema = z.object({
   issue: issueListItemSchema.extend({
     latestEvent: eventSummarySchema.nullable()
@@ -179,6 +184,7 @@ export const updateIssueResponseSchema = z.object({
   issue: issueListItemSchema
 });
 
+export type IssueFacetsResponse = z.infer<typeof issueFacetsResponseSchema>;
 export type ListIssuesQuery = z.infer<typeof listIssuesQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type IssueStatsQuery = z.infer<typeof issueStatsQuerySchema>;

@@ -25,6 +25,13 @@ OKF 번들의 변경 이력. 최신 항목이 위.
 - **대시보드**: `MembersPage` 신규(멤버 목록 + owner일 때 이메일 추가/역할/삭제), 라우트 `/projects/:projectId/members`, 이슈 페이지에 링크. `api.ts`에 listMembers/addMember/updateMemberRole/removeMember.
 - **테스트**: `membership.test.ts` +5. 전체 161 green(기존 회귀 0 — 소유자 백필로 불변식 유지).
 
+## 2026-06-23 (P3 이슈 필터 follow-up — facets 엔드포인트 + 인덱스 + 자동완성 — feat/issue-filter-followup)
+- **이슈 API(`api/issues-api`)**: `GET /:id/issues/facets` 신규 문서화 — 프로젝트 이벤트의 distinct release/environment(null 제외, asc, 각 최대 100)를 `{ releases, environments }`로 반환(JWT+소유권). 자유 텍스트 필터의 자동완성용. `GET /:id/issues`의 "알려진 한계" 2종(인덱스 부재·자동완성 미구현)을 해소 내용으로 교체(인덱스 추가됨, facets 엔드포인트 제공). 코드: `modules/issues/{service,schemas,routes}.ts`.
+- **DB**: `Event`에 `@@index([projectId, release])` / `@@index([projectId, environment])` 추가(마이그레이션 `20260623042723_event_release_env_index`, 인덱스 전용 — 생성 클라이언트 타입 변화 없음).
+- **대시보드**: `api.ts`에 `listIssueFacets(projectId)`, `IssuesPage`가 facets useQuery로 환경/릴리스 input에 `<datalist>` 자동완성 부착(자유 텍스트 유지).
+- **테스트**: `tests/issueFacets.test.ts` 신규 5개(distinct/중복제거·null 제외·프로젝트 스코프·빈 배열·비소유 404). typecheck·lint 클린, 전체 161 green(156+5).
+- **index.md**: 이슈 API 설명에 facets 엔드포인트 명시.
+
 ## 2026-06-23 (P3 이슈 검색/필터 강화 — feat/retention-pruning)
 - **이슈 API(`api/issues-api`)**: `GET /:id/issues` 쿼리 파라미터에 신규 필터 4종 추가 반영. `level`(Issue.level 완전일치), `release`/`environment`(Event 관계 기반 `some` 매칭 — 동시 지정 시 같은 이벤트 하나가 양쪽 충족 필요), `since`/`until`(Issue.lastSeen inclusive 범위, `since > until`이면 400). 필터 의미론 절 신규(각 필터 구현 방식 명시). 알려진 한계 2종 추가: Event.release·environment 전용 인덱스 없음(대용량 시 추가 권고), release/environment 자동완성 미구현(자유 텍스트 입력).
 - **index.md**: 이슈 API 항목 설명에 신규 필터 명시.

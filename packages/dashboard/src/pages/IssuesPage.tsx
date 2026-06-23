@@ -31,6 +31,10 @@ export const IssuesPage = (): ReactNode => {
     queryKey: ["project", projectId],
     queryFn: () => api.getProject(projectId)
   });
+  const facets = useQuery({
+    queryKey: ["issue-facets", projectId],
+    queryFn: () => api.listIssueFacets(projectId)
+  });
   const issues = useQuery({
     queryKey: [
       "issues",
@@ -98,18 +102,30 @@ export const IssuesPage = (): ReactNode => {
         </select>
         <input
           placeholder="환경"
+          list="env-facets"
           value={environment}
           onChange={(e) => {
             setEnvironment(e.target.value);
           }}
         />
+        <datalist id="env-facets">
+          {(facets.data?.environments ?? []).map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
         <input
           placeholder="릴리스"
+          list="release-facets"
           value={release}
           onChange={(e) => {
             setRelease(e.target.value);
           }}
         />
+        <datalist id="release-facets">
+          {(facets.data?.releases ?? []).map((v) => (
+            <option key={v} value={v} />
+          ))}
+        </datalist>
         <input
           type="date"
           aria-label="시작일 (마지막 발생)"

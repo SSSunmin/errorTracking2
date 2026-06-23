@@ -170,6 +170,8 @@ model Event {
   @@index([issueId, receivedAt])
   @@index([projectId, receivedAt])
   @@index([clientEventId])
+  @@index([projectId, release])
+  @@index([projectId, environment])
 }
 
 model EventSnapshot {
