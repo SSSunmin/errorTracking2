@@ -33,6 +33,33 @@ timestamp: 2026-06-22
 
 **의존성**: 없음(독립). 가장 먼저 권장.
 
+### 확정 계획 (2026-06-22)
+코드 근거(impl-planner) 검토 후 결정·착수.
+
+**확정 결정**:
+- 보존기간(env 전역): 리플레이 14일 / 스냅샷 14일 / 이벤트 90일 / 소스맵 0(비활성).
+- 정책 범위: **env 전역만**. 잡 로직은 "프로젝트별 cutoff 계산" 함수로 설계해 추후 Project override 확장 용이(후속 티켓).
+- 소스맵: **이번 범위 제외** — 릴리스 산출물이라 시간 삭제 시 활성 릴리스 심볼리케이션 손상. P2(소스맵 삭제 API)와 통합.
+- boolean env: zod v4 `z.stringbool()` (`RETENTION_ENABLED`).
+- 인덱스 마이그레이션: 일반 `CREATE INDEX`(Phase 1·소규모). 운영 대용량 전환 시 `CONCURRENTLY` 수동 — 운영 노트.
+
+**핵심 코드 사실**:
+- `Event→EventSnapshot` 1:1, FK `onDelete: Cascade` → Event 삭제 시 snapshot 자동 정리.
+- `Event↔EventReplay` **FK 없음**(`clientEventId` 문자열 매칭) → Event 지워도 **리플레이 고아 잔존 → 독립 삭제 필수**(이 P0의 핵심 위험).
+- `EventReplay`·`EventSnapshot`은 `createdAt` 단독 인덱스 부재 → 배치 삭제용 인덱스 추가 필요.
+- BullMQ 큐는 `ingest-events` 하나뿐, repeatable job 없음. 큐 lazy 싱글톤 패턴(`lib/queue.ts`), 워커 별도 프로세스(`worker.ts`).
+
+**구현 단계**:
+1. env 스키마 확장(`config/env.ts`에 `RETENTION_*`).
+2. 마이그레이션: `EventReplay`/`EventSnapshot`에 `createdAt`(또는 `[projectId, createdAt]`) 인덱스.
+3. retention 큐/스케줄러 인프라(`lib/queue.ts` `getRetentionQueue`/`closeRetentionQueue`, `upsertJobScheduler`로 멱등 등록, `app.ts` onClose 연결).
+4. prune 배치 로직(`modules/retention/prune.ts`): cutoff 계산 + LIMIT N 배치 삭제(배치 단위 커밋, 배치 간 sleep, concurrency 1). 순서 `EventReplay`(독립)→`Event`(snapshot cascade). 삭제량 메트릭 반환.
+5. 워커 등록 + 스케줄러 부트스트랩(`worker.ts`에 retention Worker, completed/failed 로깅, shutdown에 close).
+6. Vitest 테스트: cutoff 경계·disabled·대상별 차등·배치 경계·고아 replay 독립삭제·Event cascade.
+7. OKF 문서(retention 개념 + index/log, env 문서).
+
+**위험**: 단일 트랜잭션 대량삭제 금지(lock/WAL) → 배치 필수. 고아 EventReplay 독립 삭제 누락 시 리플레이 영구 잔존. DELETE 후 디스크는 autovacuum 의존(운영 모니터링).
+
 ---
 
 ## P1 — 리플레이 보안 하드닝 (stored-XSS 차단)
