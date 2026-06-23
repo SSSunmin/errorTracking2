@@ -14,6 +14,10 @@ export const eventSnapshotParamsSchema = issueParamsSchema.extend({
   eventId: z.string().min(1)
 });
 
+export const commentParamsSchema = issueParamsSchema.extend({
+  commentId: z.string().min(1)
+});
+
 export const listIssuesQuerySchema = z
   .object({
     status: issueStatusSchema.optional(),
@@ -59,6 +63,25 @@ export const updateIssueSchema = z.object({
   status: issueStatusSchema
 });
 
+export const updateAssigneeSchema = z.object({
+  // A user id to assign, or null to clear the assignee. "" is rejected (min 1).
+  assigneeId: z.string().min(1).nullable()
+});
+
+const maxCommentLength = 5_000;
+
+export const createCommentSchema = z.object({
+  body: z.string().trim().min(1).max(maxCommentLength)
+});
+
+export const issueAssigneeSchema = z
+  .object({
+    userId: z.string(),
+    email: z.string(),
+    name: z.string().nullable()
+  })
+  .nullable();
+
 export const issueListItemSchema = z.object({
   id: z.string(),
   title: z.string(),
@@ -67,7 +90,27 @@ export const issueListItemSchema = z.object({
   status: issueStatusSchema,
   timesSeen: z.number().int(),
   firstSeen: z.string(),
-  lastSeen: z.string()
+  lastSeen: z.string(),
+  assignee: issueAssigneeSchema
+});
+
+export const issueCommentSchema = z.object({
+  id: z.string(),
+  body: z.string(),
+  author: z.object({
+    userId: z.string(),
+    email: z.string(),
+    name: z.string().nullable()
+  }),
+  createdAt: z.string()
+});
+
+export const listCommentsResponseSchema = z.object({
+  comments: z.array(issueCommentSchema)
+});
+
+export const commentResponseSchema = z.object({
+  comment: issueCommentSchema
 });
 
 export const eventSummarySchema = z.object({
@@ -140,3 +183,5 @@ export type ListIssuesQuery = z.infer<typeof listIssuesQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type IssueStatsQuery = z.infer<typeof issueStatsQuerySchema>;
 export type UpdateIssueInput = z.infer<typeof updateIssueSchema>;
+export type UpdateAssigneeInput = z.infer<typeof updateAssigneeSchema>;
+export type CreateCommentInput = z.infer<typeof createCommentSchema>;

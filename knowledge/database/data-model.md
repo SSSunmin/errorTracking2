@@ -1,10 +1,10 @@
 ---
 type: Database Schema
 title: 데이터 모델 (Prisma / PostgreSQL)
-description: Mini-Sentry의 11개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
+description: Mini-Sentry의 13개 Prisma 모델, 관계, 인덱스, enum. 출처는 packages/server/prisma/schema.prisma.
 resource: packages/server/prisma/schema.prisma
-tags: [database, prisma, postgresql, schema, replay, sourcemap, symbolication]
-timestamp: 2026-06-22
+tags: [database, prisma, postgresql, schema, replay, sourcemap, symbolication, assignee, comments]
+timestamp: 2026-06-23
 ---
 
 # 데이터 모델
@@ -17,7 +17,7 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 
 ### User — 계정
 `id` · `email`(unique) · `passwordHash` · `name?` · `createdAt` · `updatedAt`
-관계: `projects[]`(소유), `memberships[]`(ProjectMember), `refreshTokens[]`
+관계: `projects[]`(소유), `memberships[]`(ProjectMember), `refreshTokens[]`, `assignedIssues[]`(IssueAssignee), `comments[]`(IssueComment)
 
 ### Project — 모니터링 대상 프로젝트
 `id` · `name` · `slug`(unique) · `platform`(기본 `javascript-browser`) · `ownerId` → User(onDelete: Cascade) · `createdAt` · `updatedAt`
@@ -36,8 +36,17 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 인덱스: `@@index([projectId])`
 
 ### Issue — 묶인 에러 그룹
-`id` · `projectId` → Project(Cascade) · `fingerprint` · `title` · `culprit?` · `level`(IssueLevel, 기본 error) · `status`(IssueStatus, 기본 unresolved) · `timesSeen`(기본 0) · `firstSeen` · `lastSeen` · `createdAt` · `updatedAt`
-제약: `@@unique([projectId, fingerprint])` / 인덱스: `@@index([projectId, status])`, `@@index([projectId, lastSeen])`
+`id` · `projectId` → Project(Cascade) · `fingerprint` · `title` · `culprit?` · `level`(IssueLevel, 기본 error) · `status`(IssueStatus, 기본 unresolved) · `timesSeen`(기본 0) · `firstSeen` · `lastSeen` · `createdAt` · `updatedAt` · `assigneeId?` → User(onDelete: SetNull)
+관계: `assignee User?`(IssueAssignee), `comments[]`(IssueComment)
+제약: `@@unique([projectId, fingerprint])` / 인덱스: `@@index([projectId, status])`, `@@index([projectId, lastSeen])`, `@@index([assigneeId])`
+
+> `assigneeId`: 이슈 담당자(P3). `PATCH /:id/issues/:issueId/assignee`로 지정/해제하며, 지정 대상은 **해당 프로젝트의 멤버여야** 한다(서비스 레이어 검증, 비멤버는 400). `onDelete: SetNull`이라 담당자 계정 삭제 시 자동 해제. 마이그레이션: `20260623130000_issue_assignee_comments`.
+
+### IssueComment — 이슈 코멘트 스레드(P3)
+`id` · `issueId` → Issue(onDelete: Cascade) · `authorId` → User(onDelete: Cascade) · `body` · `createdAt`
+인덱스: `@@index([issueId, createdAt])`
+
+> 멤버라면 누구나 작성·조회 가능. 삭제는 **작성자 본인 또는 owner-role 멤버**만(그 외 403). 목록은 `createdAt` 오름차순·최대 200건. 마이그레이션: `20260623130000_issue_assignee_comments`.
 
 ### Event — 개별 에러 발생 1건
 `id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `symbolicated?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`

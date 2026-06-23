@@ -43,6 +43,12 @@ export interface CreateProjectResponse {
 export type IssueLevel = "debug" | "info" | "warning" | "error" | "fatal";
 export type IssueStatus = "unresolved" | "resolved" | "ignored";
 
+export interface IssueAssignee {
+  userId: string;
+  email: string;
+  name: string | null;
+}
+
 export interface IssueListItem {
   id: string;
   title: string;
@@ -52,6 +58,14 @@ export interface IssueListItem {
   timesSeen: number;
   firstSeen: string;
   lastSeen: string;
+  assignee: IssueAssignee | null;
+}
+
+export interface IssueComment {
+  id: string;
+  body: string;
+  author: IssueAssignee;
+  createdAt: string;
 }
 
 export interface EventSummary {
@@ -353,6 +367,37 @@ export const api = {
     request(`/api/projects/${projectId}/issues/${issueId}`, {
       method: "PATCH",
       body: { status }
+    }),
+  setAssignee: (
+    projectId: string,
+    issueId: string,
+    assigneeId: string | null
+  ): Promise<{ issue: IssueListItem }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/assignee`, {
+      method: "PATCH",
+      body: { assigneeId }
+    }),
+  listComments: (
+    projectId: string,
+    issueId: string
+  ): Promise<{ comments: IssueComment[] }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/comments`),
+  addComment: (
+    projectId: string,
+    issueId: string,
+    body: string
+  ): Promise<{ comment: IssueComment }> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/comments`, {
+      method: "POST",
+      body: { body }
+    }),
+  deleteComment: (
+    projectId: string,
+    issueId: string,
+    commentId: string
+  ): Promise<void> =>
+    request(`/api/projects/${projectId}/issues/${issueId}/comments/${commentId}`, {
+      method: "DELETE"
     }),
 
   listAlertRules: (projectId: string): Promise<{ alertRules: AlertRule[] }> =>

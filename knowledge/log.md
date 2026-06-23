@@ -2,6 +2,13 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P3 이슈 담당자 + 코멘트 — feat/issue-assignee-comments)
+- **DB(`database/data-model`)**: `Issue.assigneeId?`(→User, `onDelete: SetNull`, `@@index([assigneeId])`) + `assignee`/`comments` 관계 추가. 새 모델 `IssueComment(issueId→Issue Cascade, authorId→User Cascade, body, createdAt, @@index([issueId, createdAt]))`. `User`에 `assignedIssues[]`·`comments[]` 역관계. 모델 수 12→13. 마이그레이션 `20260623130000_issue_assignee_comments`(드리프트 회피 위해 SQL 수기 작성 후 `migrate deploy` 적용 — 공유 dev DB).
+- **이슈 API(`api/issues-api`)**: 엔드포인트 3종 추가. `PATCH /:id/issues/:issueId/assignee`(멤버 접근, assigneeId null 가능, 비null은 **프로젝트 멤버여야** 함→아니면 400). `GET/POST /:id/issues/:issueId/comments`(멤버 접근, 목록 createdAt asc·최대 200, body 트림 1–5000자). `DELETE .../comments/:commentId`(작성자 본인 또는 owner-role 멤버만→403, 없으면 404). `IssueListItem`에 `assignee:{userId,email,name}|null`(목록·상세 양쪽, relation include). 새 응답 타입 `IssueComment`.
+- **대시보드**: `IssueDetailPage`에 담당자 셀렉트(members 쿼리 재사용) + `CommentsSection`(목록/textarea 작성/삭제 — 작성자·owner에게만 삭제 버튼, useAuth.user.id + 멤버 role로 판정). `api.ts`에 `IssueAssignee`/`IssueComment` 타입 + setAssignee/listComments/addComment/deleteComment.
+- **테스트**: `issueAssigneeComments.test.ts` +7. 전체 170 green(회귀 0 — 기존 `listIssuesResponseSchema` 사용처는 assignee 추가로도 통과). typecheck·lint clean.
+- **설계 판단**: 담당자는 멤버십 검증(단순 User 존재 X)으로 외부인 배정 차단. 코멘트 삭제 권한은 멤버 권한 모델과 일관(작성자 self-delete + owner 모더레이션).
+
 ## 2026-06-23 (P3 팀/멤버십 모델 + 접근제어 재설계 — feat/team-membership)
 - **DB(`database/data-model`)**: 새 모델 `ProjectMember(projectId, userId, role)` + enum `ProjectRole(owner|member)` 추가. `User.memberships[]`·`Project.members[]` 관계 추가. `Project.ownerId`는 소유자 포인터로 유지(접근제어는 멤버십 기반). 마이그레이션 `20260623120000_project_membership`(기존 프로젝트 owner를 owner-role 멤버로 백필).
 - **접근제어**: 단일 소유자(`ownerId` 일치) 검사 → 멤버십(`members.some.userId`) 검사로 전환. 4개 서비스(`projects`/`issues`/`sourcemaps`/`alert-rules`)의 ensure/get 헬퍼·`listProjects`·`createProject`(owner membership nested create)·update/delete where 교체(시그니처 유지, 최소 diff). **owner 전용**: 프로젝트 삭제(`{id, ownerId}` 유지), 멤버 관리.

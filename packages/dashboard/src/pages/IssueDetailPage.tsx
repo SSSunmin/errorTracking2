@@ -3,7 +3,8 @@ import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 import "rrweb/dist/style.css";
 
-import { api, type EventSnapshot, type IssueStatus, type ReplayEvent } from "../api";
+import { api, ApiError, type EventSnapshot, type IssueStatus, type ReplayEvent } from "../api";
+import { useAuth } from "../auth";
 import { LevelBadge, relativeTime, Spinner, StatsChart, StatusBadge } from "../components";
 import { replayOrigin } from "../replay/config";
 import {
@@ -419,8 +420,124 @@ const ReplaySection = ({
   );
 };
 
+/** Comment thread: list + add form + delete (author or project owner only). */
+const CommentsSection = ({
+  projectId,
+  issueId,
+  isOwner
+}: {
+  projectId: string;
+  issueId: string;
+  isOwner: boolean;
+}): ReactNode => {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const [body, setBody] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const comments = useQuery({
+    queryKey: ["comments", projectId, issueId],
+    queryFn: () => api.listComments(projectId, issueId)
+  });
+
+  const invalidate = (): void => {
+    void queryClient.invalidateQueries({
+      queryKey: ["comments", projectId, issueId]
+    });
+  };
+
+  const add = useMutation({
+    mutationFn: (text: string) => api.addComment(projectId, issueId, text),
+    onSuccess: () => {
+      setBody("");
+      setError(null);
+      invalidate();
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : "코멘트 작성에 실패했습니다.");
+    }
+  });
+
+  const remove = useMutation({
+    mutationFn: (commentId: string) =>
+      api.deleteComment(projectId, issueId, commentId),
+    onSuccess: () => {
+      setError(null);
+      invalidate();
+    },
+    onError: (err) => {
+      setError(err instanceof ApiError ? err.message : "코멘트 삭제에 실패했습니다.");
+    }
+  });
+
+  const list = comments.data?.comments ?? [];
+
+  return (
+    <section className="card">
+      <h3>코멘트</h3>
+      {comments.isLoading && <Spinner />}
+      {comments.isError && <p className="error">코멘트를 불러오지 못했습니다.</p>}
+      {!comments.isLoading && !comments.isError && list.length === 0 && (
+        <p className="muted">코멘트 없음</p>
+      )}
+      <ul className="crumbs">
+        {list.map((comment) => {
+          const canDelete = isOwner || comment.author.userId === user?.id;
+          return (
+            <li key={comment.id}>
+              <div>
+                <strong>{comment.author.name ?? comment.author.email}</strong>{" "}
+                <span className="muted small">
+                  {relativeTime(comment.createdAt)}
+                </span>
+                <p>{comment.body}</p>
+              </div>
+              {canDelete && (
+                <button
+                  type="button"
+                  className="ghost danger small"
+                  disabled={remove.isPending}
+                  onClick={() => {
+                    remove.mutate(comment.id);
+                  }}
+                >
+                  삭제
+                </button>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (!body.trim()) {
+            setError("내용을 입력하세요.");
+            return;
+          }
+          setError(null);
+          add.mutate(body.trim());
+        }}
+      >
+        <textarea
+          value={body}
+          placeholder="코멘트를 입력하세요"
+          onChange={(e) => {
+            setBody(e.target.value);
+          }}
+        />
+        {error && <p className="error">{error}</p>}
+        <button type="submit" className="primary" disabled={add.isPending}>
+          코멘트 작성
+        </button>
+      </form>
+    </section>
+  );
+};
+
 export const IssueDetailPage = (): ReactNode => {
   const { projectId = "", issueId = "" } = useParams();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [window, setWindow] = useState<"24h" | "7d">("24h");
   const [selectedEventId, setSelectedEventId] = useState<string | null>(null);
@@ -428,6 +545,10 @@ export const IssueDetailPage = (): ReactNode => {
   const issue = useQuery({
     queryKey: ["issue", projectId, issueId],
     queryFn: () => api.getIssue(projectId, issueId)
+  });
+  const members = useQuery({
+    queryKey: ["members", projectId],
+    queryFn: () => api.listMembers(projectId)
   });
   const stats = useQuery({
     queryKey: ["stats", projectId, issueId, window],
@@ -446,11 +567,22 @@ export const IssueDetailPage = (): ReactNode => {
       void queryClient.invalidateQueries({ queryKey: ["issues", projectId] });
     }
   });
+  const setAssignee = useMutation({
+    mutationFn: (assigneeId: string | null) =>
+      api.setAssignee(projectId, issueId, assigneeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["issue", projectId, issueId] });
+      void queryClient.invalidateQueries({ queryKey: ["issues", projectId] });
+    }
+  });
 
   if (issue.isLoading) return <Spinner />;
   if (!issue.data) return <p className="error">이슈를 찾을 수 없습니다.</p>;
 
   const detail = issue.data.issue;
+  const memberList = members.data?.members ?? [];
+  const isOwner =
+    memberList.find((member) => member.userId === user?.id)?.role === "owner";
   const eventList = events.data?.events ?? [];
   const selected =
     eventList.find((event) => event.id === selectedEventId) ?? eventList[0];
@@ -515,6 +647,24 @@ export const IssueDetailPage = (): ReactNode => {
         <span className="muted">이벤트 {detail.timesSeen}건</span>
         <span className="muted">최초 {relativeTime(detail.firstSeen)}</span>
         <span className="muted">최근 {relativeTime(detail.lastSeen)}</span>
+        <label className="muted small">
+          담당자{" "}
+          <select
+            aria-label="담당자"
+            value={detail.assignee?.userId ?? ""}
+            disabled={setAssignee.isPending}
+            onChange={(event) => {
+              setAssignee.mutate(event.target.value === "" ? null : event.target.value);
+            }}
+          >
+            <option value="">담당자 없음</option>
+            {memberList.map((member) => (
+              <option key={member.userId} value={member.userId}>
+                {member.name ?? member.email}
+              </option>
+            ))}
+          </select>
+        </label>
       </div>
       {detail.culprit && <p className="culprit">{detail.culprit}</p>}
 
@@ -715,6 +865,8 @@ export const IssueDetailPage = (): ReactNode => {
           eventId={selected.id}
         />
       )}
+
+      <CommentsSection projectId={projectId} issueId={issueId} isOwner={isOwner} />
     </div>
   );
 };

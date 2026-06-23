@@ -1,15 +1,15 @@
 ---
 type: API Reference
 title: 이슈 API
-description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 소유권 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 추가(P3).
+description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 멤버십 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 + 담당자(assignee)·코멘트(P3).
 resource: packages/server/src/modules/issues/routes.ts
-tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter]
+tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter, assignee, comments]
 timestamp: 2026-06-23
 ---
 
 # 이슈 API
 
-프로젝트 내 이슈를 관리하는 엔드포인트. **모든 라우트에 JWT 인증(`requireAuth`) 필수**. 서비스 레이어에서 요청 사용자가 해당 프로젝트 소유자인지 확인한다.
+프로젝트 내 이슈를 관리하는 엔드포인트. **모든 라우트에 JWT 인증(`requireAuth`) 필수**. 서비스 레이어에서 요청 사용자가 해당 프로젝트의 **멤버**인지 확인한다(비멤버는 404). 담당자 지정·코멘트 작성·상태 변경은 모든 멤버가 가능하고, 코멘트 삭제만 작성자 본인 또는 owner-role 멤버로 제한된다.
 
 ## 엔드포인트 (prefix: `/api/projects`)
 
@@ -92,11 +92,46 @@ timestamp: 2026-06-23
 
 > `resolved` → 새 이벤트 수신 시 Worker가 자동으로 `unresolved`로 되돌림 (regression). `ignored`는 되돌리지 않는다.
 
+### PATCH `/:id/issues/:issueId/assignee`
+이슈 담당자 지정/해제. **멤버 접근**(비멤버 404).
+
+**바디:** `{ assigneeId: string | null }`
+
+- `assigneeId`가 `null`이 아니면 그 사용자가 **해당 프로젝트의 멤버여야 한다**(`ProjectMember` 존재 확인). 멤버가 아니면 400(`BAD_REQUEST`). 단순 User 존재만으로는 부족 — 외부인에게 이슈를 배정할 수 없다.
+- `null`이면 담당자 해제. `Issue.assigneeId`는 `onDelete: SetNull`이라 담당자 계정 삭제 시 자동 해제된다.
+
+**응답 200:** `{ issue: IssueListItem }` (갱신된 담당자 포함)
+
+### GET `/:id/issues/:issueId/comments`
+이슈 코멘트 목록. **멤버 접근**(비멤버 404). `createdAt` 오름차순, 최대 **200건**(안전 상한).
+
+**응답 200:** `{ comments: IssueComment[] }`
+
+### POST `/:id/issues/:issueId/comments`
+코멘트 작성. **멤버 접근**. `authorId`는 현재 사용자.
+
+**바디:** `{ body: string }` — 트림 후 1–5,000자. 빈/공백 전용 본문은 400.
+
+**응답 201:** `{ comment: IssueComment }`
+
+### DELETE `/:id/issues/:issueId/comments/:commentId`
+코멘트 삭제. **멤버 접근**하되 **작성자 본인 또는 owner-role 멤버만** 삭제 가능(그 외 멤버는 403). 존재하지 않는 코멘트는 404.
+
+**응답 204:** (본문 없음)
+
 ## 응답 타입
 
 **IssueListItem:**
 ```
-id, title, culprit(nullable), level, status, timesSeen, firstSeen(ISO), lastSeen(ISO)
+id, title, culprit(nullable), level, status, timesSeen, firstSeen(ISO), lastSeen(ISO),
+assignee: { userId, email, name } | null
+```
+
+> `assignee`는 목록·상세 양쪽에 포함된다(목록은 Prisma relation include로 산출). 담당자 미지정 시 `null`.
+
+**IssueComment:**
+```
+id, body, author: { userId, email, name }, createdAt(ISO)
 ```
 
 **EventSummary:**
