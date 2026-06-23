@@ -1,9 +1,9 @@
 ---
 type: API Reference
 title: 이슈 API
-description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 멤버십 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 + 필터 자동완성용 facets 엔드포인트 + 담당자(assignee)·코멘트(P3).
+description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 멤버십 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 + 필터 자동완성용 facets 엔드포인트 + 담당자(assignee)·코멘트 + 릴리스 회귀 보기(P3).
 resource: packages/server/src/modules/issues/routes.ts
-tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter, assignee, comments]
+tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter, assignee, comments, release, regression]
 timestamp: 2026-06-23
 ---
 
@@ -51,6 +51,19 @@ timestamp: 2026-06-23
 - 대시보드 `IssuesPage`가 이 엔드포인트로 환경/릴리스 입력에 `<datalist>` 자동완성을 채운다(자유 텍스트 입력은 유지 — 제안만).
 
 **응답 200:** `{ releases: string[], environments: string[] }`
+
+### GET `/:id/releases/:release/issues`
+**릴리스 회귀 보기(P3).** 특정 릴리스에서 처음 등장한 이슈(신규)와 그 릴리스에서 재발한 이슈(회귀)를 한 번에 조회한다. **JWT 인증 + 프로젝트 소유권 필수**(`ensureOwnedProject` 선행, 미소유 시 404).
+
+- `:release` — URL 세그먼트(인코딩됨). Fastify가 디코드한 뒤 zod로 검증(1–256자, 그 외 400).
+
+**판별 로직:**
+- `newIssues` — `Issue.firstRelease === :release` 인 이슈. `firstRelease`는 이슈 **최초 생성 시** 그 이벤트의 `release`로 기록된다(없으면 null). `lastSeen` desc, 최대 100.
+- `regressedIssues` — `Event.isRegression = true AND Event.release = :release` 인 이벤트를 **하나 이상(some)** 가진 distinct 이슈. `isRegression`은 회귀를 일으킨 그 이벤트에만 `true`(resolved 이슈가 새 이벤트로 unresolved 복귀하는 시점). `ignored` 상태 이슈는 제외(이미 트리아지됨). `lastSeen` desc, 최대 100.
+- 두 목록은 서로 다른 신호에서 도출되며, 어떤 이슈가 같은 릴리스에서 최초 등장과 회귀를 동시에 한 경우 양쪽에 모두 나타날 수 있다(의도된 동작, 호출 측에서 필요시 dedupe).
+- 각 목록은 100건 상한. 초과 시 응답의 `*Truncated` 플래그가 `true`(나머지는 생략).
+
+**응답 200:** `{ release: string, newIssues: IssueListItem[], newIssuesTruncated: boolean, regressedIssues: IssueListItem[], regressedIssuesTruncated: boolean }`
 
 ### GET `/:id/issues/:issueId`
 이슈 상세 조회 (최신 이벤트 요약 포함).

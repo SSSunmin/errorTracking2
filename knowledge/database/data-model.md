@@ -36,7 +36,7 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 인덱스: `@@index([projectId])`
 
 ### Issue — 묶인 에러 그룹
-`id` · `projectId` → Project(Cascade) · `fingerprint` · `title` · `culprit?` · `level`(IssueLevel, 기본 error) · `status`(IssueStatus, 기본 unresolved) · `timesSeen`(기본 0) · `firstSeen` · `lastSeen` · `createdAt` · `updatedAt` · `assigneeId?` → User(onDelete: SetNull)
+`id` · `projectId` → Project(Cascade) · `fingerprint` · `title` · `culprit?` · `firstRelease?` · `level`(IssueLevel, 기본 error) · `status`(IssueStatus, 기본 unresolved) · `timesSeen`(기본 0) · `firstSeen` · `lastSeen` · `createdAt` · `updatedAt` · `assigneeId?` → User(onDelete: SetNull)
 관계: `assignee User?`(IssueAssignee), `comments[]`(IssueComment)
 제약: `@@unique([projectId, fingerprint])` / 인덱스: `@@index([projectId, status])`, `@@index([projectId, lastSeen])`, `@@index([assigneeId])`
 
@@ -48,10 +48,14 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 
 > 멤버라면 누구나 작성·조회 가능. 삭제는 **작성자 본인 또는 owner-role 멤버**만(그 외 403). 목록은 `createdAt` 오름차순·최대 200건. 마이그레이션: `20260623130000_issue_assignee_comments`.
 
+> `firstRelease`(`String?`): 이슈가 **최초 생성**될 때 그 이벤트의 `release` 값으로 기록(없으면 null). 릴리스 회귀 보기에서 "이 릴리스에서 처음 등장한 신규 이슈" 판별에 사용. 마이그레이션: `20260623120000_release_regression_tracking`.
+
 ### Event — 개별 에러 발생 1건
-`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `symbolicated?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`
+`id` · `issueId` → Issue(Cascade) · `projectId` → Project(Cascade) · `message?` · `exceptionType?` · `exceptionValue?` · `stacktrace?`(Json) · `symbolicated?`(Json) · `breadcrumbs?`(Json) · `tags?`(Json) · `userContext?`(Json) · `contexts?`(Json) · `level`(IssueLevel) · `environment?` · `release?` · `isRegression Boolean`(기본 false) · `sdkName?` · `sdkVersion?` · `requestUrl?` · `userAgent?` · `timestamp` · `receivedAt` · `clientEventId String?`
 관계: `snapshot EventSnapshot?`(back-relation, 0 또는 1개)
-인덱스: `@@index([issueId, receivedAt])`, `@@index([projectId, receivedAt])`, `@@index([clientEventId])`
+인덱스: `@@index([issueId, receivedAt])`, `@@index([projectId, receivedAt])`, `@@index([projectId, release, isRegression])`, `@@index([clientEventId])`
+
+> `isRegression`(`Boolean @default(false)`): 이 이벤트가 **회귀를 일으킨** 이벤트인지 여부. resolved 이슈가 새 이벤트로 unresolved 복귀하는 바로 그 이벤트에만 `true`. `@@index([projectId, release, isRegression])`로 릴리스별 회귀 이벤트 조회. 마이그레이션: `20260623120000_release_regression_tracking`.
 
 > `symbolicated`: 소스맵 심볼리케이션 결과 캐시(`Json?`, JSONB). 이벤트 조회 시 lazy 심볼리케이션 후 `{ frames: [...] }` 형태로 채운다. 소스맵 재업로드 시 해당 릴리스 이벤트 전체에 `updateMany`로 `null` 무효화된다. 마이그레이션: `20260622000000_add_source_map`.
 

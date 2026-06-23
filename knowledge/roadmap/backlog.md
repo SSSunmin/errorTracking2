@@ -113,7 +113,7 @@ timestamp: 2026-06-22
 - `GET /:id/issues`에 필터 4종 추가(마이그레이션 없음): `level`(Issue.level 직접일치), `release`/`environment`(해당 이벤트를 가진 이슈만 — `events.some`, 둘 다 주면 같은 이벤트가 동시 충족), `since`/`until`(Issue.lastSeen inclusive 범위, since>until→400). 기존 status/query/sort/cursor 유지.
 - 대시보드 `IssuesPage`에 레벨 셀렉트·환경/릴리스 입력·기간(date) 입력 추가(로컬 날짜→UTC inclusive 경계 변환).
 - 테스트 +7(level/release/environment/combined/range/검증). 전체 156 green. 근거: [소스맵 API](/api/issues-api.md) 갱신.
-- **follow-up**: ① ~~`Event.release`·`environment` 인덱스 부재~~ → **완료(2026-06-23, feat/issue-filter-followup)**: `@@index([projectId, release])` / `@@index([projectId, environment])` 추가(마이그레이션 `20260623042723_event_release_env_index`). ② ~~release/environment 자동완성 드롭다운~~ → **완료(동 PR)**: `GET /:id/issues/facets`(distinct release/environment, null 제외·asc·각 ≤100) 신설 + 대시보드 `<datalist>` 자동완성(자유 텍스트 유지). ③ 환경·릴리스 회귀 보기, 통계 차트 개선은 미착수(이슈 담당자/코멘트는 C3b 완료).
+- **follow-up**: ① ~~`Event.release`·`environment` 인덱스 부재~~ → **완료(2026-06-23, feat/issue-filter-followup)**: `@@index([projectId, release])` / `@@index([projectId, environment])` 추가(마이그레이션 `20260623042723_event_release_env_index`). ② ~~release/environment 자동완성 드롭다운~~ → **완료(동 PR)**: `GET /:id/issues/facets`(distinct release/environment, null 제외·asc·각 ≤100) 신설 + 대시보드 `<datalist>` 자동완성(자유 텍스트 유지). ③ 통계 차트 개선은 미착수(이슈 담당자/코멘트는 C3b, 릴리스 회귀 보기는 별도 완료).
 
 ### 팀/멤버십 모델 + 접근제어 재설계 (C3a) — 완료 (2026-06-23, feat/team-membership)
 - 단일 소유자(`Project.ownerId`) → **멤버십 기반 접근제어**. 새 모델 `ProjectMember(projectId, userId, role: owner|member)` + enum `ProjectRole`. 마이그레이션 `20260623120000_project_membership`(기존 프로젝트 owner를 멤버로 백필).
@@ -129,6 +129,13 @@ timestamp: 2026-06-22
 - 대시보드: `IssueDetailPage`에 담당자 셀렉트(멤버 목록 재사용) + 코멘트 스레드(목록/작성/삭제 — 작성자·owner에게만 삭제 버튼). `api.ts`에 setAssignee/listComments/addComment/deleteComment.
 - 테스트 +7(issueAssigneeComments.test.ts: 지정/해제·비멤버 지정 400·비멤버 호출 404·노출, 코멘트 생성/순서·비멤버 404·삭제 권한 3종·미존재 404·빈 body 400). 전체 170 green.
 - **설계 판단**: 담당자 검증은 멤버십(존재만 X)으로 외부인 배정 차단. 코멘트 삭제 권한은 멤버 권한 모델(owner-role)과 일관 — 작성자 self-delete + owner 모더레이션.
+
+### 릴리스 회귀 보기 — 완료 (2026-06-23, feat/release-regression-view)
+- 스키마+마이그레이션(`20260623120000_release_regression_tracking`): `Issue.firstRelease String?`(최초 생성 시 이벤트 release 기록), `Event.isRegression Boolean @default(false)`(회귀를 일으킨 이벤트만 true), `@@index([projectId, release, isRegression])`.
+- `process.ts`(핫패스, 보수적 수정): create 시 `firstRelease` optional-spread 저장, 이벤트 create data에 `isRegression: regressed` 추가. fingerprint-conflict 재시도 경로도 동일 동작.
+- `GET /:id/releases/:release/issues` → `{ release, newIssues, regressedIssues }`. newIssues=`firstRelease===release`, regressedIssues=`events.some(isRegression && release)` distinct 이슈, 각 lastSeen desc·최대 100. `ensureOwnedProject` 선행(미소유 404).
+- 대시보드 `ReleasesPage`(신규 라우트 `/projects/:projectId/releases`, IssuesPage에 링크 추가), `api.getReleaseIssues`.
+- 테스트 +7(process 2: firstRelease/isRegression true·false, 엔드포인트 5: newIssues/regressedIssues/격리/빈결과/소유권404). 전체 162 green.
 
 **의존성**: 일부는 스키마 추가 필요(environment 등). 비차단, 범위가 넓어 개별 티켓화 권장.
 

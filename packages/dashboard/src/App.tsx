@@ -11,6 +11,7 @@ import { IssuesPage } from "./pages/IssuesPage";
 import { LoginPage } from "./pages/LoginPage";
 import { MembersPage } from "./pages/MembersPage";
 import { ProjectsPage } from "./pages/ProjectsPage";
+import { ReleasesPage } from "./pages/ReleasesPage";
 
 const formatJoinDate = (iso: string): string =>
   new Date(iso).toLocaleDateString("ko-KR");
@@ -286,6 +287,10 @@ export const App = (): ReactNode => {
         />
         <Route path="/projects/:projectId/alerts" element={<AlertsPage />} />
         <Route path="/projects/:projectId/members" element={<MembersPage />} />
+        <Route
+          path="/projects/:projectId/releases"
+          element={<ReleasesPage />}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Layout>

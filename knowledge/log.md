@@ -32,6 +32,13 @@ OKF 번들의 변경 이력. 최신 항목이 위.
 - **테스트**: `tests/issueFacets.test.ts` 신규 5개(distinct/중복제거·null 제외·프로젝트 스코프·빈 배열·비소유 404). typecheck·lint 클린, 전체 161 green(156+5).
 - **index.md**: 이슈 API 설명에 facets 엔드포인트 명시.
 
+## 2026-06-23 (P3 릴리스 회귀 보기 — feat/release-regression-view)
+- **이슈 API(`api/issues-api`)**: `GET /:id/releases/:release/issues` 엔드포인트 추가 반영(`{ release, newIssues, regressedIssues }`). 판별 로직 명시 — newIssues=`Issue.firstRelease===release`, regressedIssues=`Event.isRegression && release` distinct 이슈. `:release` URL 세그먼트 디코드/검증(1–256자), `ensureOwnedProject` 선행(미소유 404), 각 목록 lastSeen desc·최대 100.
+- **데이터 모델(`database/data-model`)**: `Issue.firstRelease String?`(최초 생성 시 이벤트 release 기록), `Event.isRegression Boolean @default(false)`(회귀 유발 이벤트만 true), `@@index([projectId, release, isRegression])` 반영. 마이그레이션 `20260623120000_release_regression_tracking`.
+- **백로그(`roadmap/backlog`)**: P3 "릴리스 회귀 보기 — 완료" 절 추가. 이전 검색/필터 follow-up에서 "릴리스 회귀 보기" 미착수 표기 제거.
+- **index.md**: 이슈 API·데이터 모델 항목 설명 갱신.
+- **코드**: `prisma/schema.prisma`+마이그레이션, `process.ts`(firstRelease·isRegression 기록, 핫패스 보수적), `issues/{schemas,service,routes}.ts`, 대시보드 `ReleasesPage.tsx`(신규 라우트)·`App.tsx`·`IssuesPage.tsx`(링크)·`api.ts`. 테스트 +7(process 2·엔드포인트 5). typecheck·lint·전체 테스트 162개 그린.
+
 ## 2026-06-23 (P3 이슈 검색/필터 강화 — feat/retention-pruning)
 - **이슈 API(`api/issues-api`)**: `GET /:id/issues` 쿼리 파라미터에 신규 필터 4종 추가 반영. `level`(Issue.level 완전일치), `release`/`environment`(Event 관계 기반 `some` 매칭 — 동시 지정 시 같은 이벤트 하나가 양쪽 충족 필요), `since`/`until`(Issue.lastSeen inclusive 범위, `since > until`이면 400). 필터 의미론 절 신규(각 필터 구현 방식 명시). 알려진 한계 2종 추가: Event.release·environment 전용 인덱스 없음(대용량 시 추가 권고), release/environment 자동완성 미구현(자유 텍스트 입력).
 - **index.md**: 이슈 API 항목 설명에 신규 필터 명시.

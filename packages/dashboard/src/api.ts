@@ -330,6 +330,17 @@ export const api = {
     projectId: string
   ): Promise<{ releases: string[]; environments: string[] }> =>
     request(`/api/projects/${projectId}/issues/facets`),
+  getReleaseIssues: (
+    projectId: string,
+    release: string
+  ): Promise<{
+    release: string;
+    newIssues: IssueListItem[];
+    regressedIssues: IssueListItem[];
+  }> =>
+    request(
+      `/api/projects/${projectId}/releases/${encodeURIComponent(release)}/issues`
+    ),
   getIssue: (
     projectId: string,
     issueId: string

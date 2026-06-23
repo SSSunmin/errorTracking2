@@ -95,7 +95,10 @@ const processEventOnce = async (
             level: toPrismaLevel(payload.level),
             timesSeen: 1,
             firstSeen: now,
-            lastSeen: now
+            lastSeen: now,
+            ...(payload.release !== undefined
+              ? { firstRelease: payload.release }
+              : {})
           },
           select: { id: true }
         });
@@ -130,6 +133,7 @@ const processEventOnce = async (
           ? { environment: payload.environment }
           : {}),
         ...(payload.release !== undefined ? { release: payload.release } : {}),
+        isRegression: regressed,
         ...(payload.sdk?.name !== undefined ? { sdkName: payload.sdk.name } : {}),
         ...(payload.sdk?.version !== undefined
           ? { sdkVersion: payload.sdk.version }

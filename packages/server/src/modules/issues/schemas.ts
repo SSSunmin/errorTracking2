@@ -59,6 +59,15 @@ export const issueStatsQuerySchema = z.object({
   window: z.enum(["24h", "7d"]).default("24h")
 });
 
+export const releaseIssuesParamsSchema = z.object({
+  id: z.string().min(1),
+  // URL-encoded release segment; same 1–256 bounds as the release filter.
+  // Fastify decodes the segment, so encodeURIComponent round-trips. Releases
+  // containing a literal "/" can't be addressed as one path segment (router 404)
+  // — out of scope; release tags rarely contain slashes.
+  release: z.string().min(1).max(256)
+});
+
 export const updateIssueSchema = z.object({
   status: issueStatusSchema
 });
@@ -185,6 +194,16 @@ export const updateIssueResponseSchema = z.object({
 });
 
 export type IssueFacetsResponse = z.infer<typeof issueFacetsResponseSchema>;
+
+export const releaseIssuesResponseSchema = z.object({
+  release: z.string(),
+  newIssues: z.array(issueListItemSchema),
+  // true when more than the 100-item cap matched (rest omitted).
+  newIssuesTruncated: z.boolean(),
+  regressedIssues: z.array(issueListItemSchema),
+  regressedIssuesTruncated: z.boolean()
+});
+
 export type ListIssuesQuery = z.infer<typeof listIssuesQuerySchema>;
 export type ListEventsQuery = z.infer<typeof listEventsQuerySchema>;
 export type IssueStatsQuery = z.infer<typeof issueStatsQuerySchema>;
