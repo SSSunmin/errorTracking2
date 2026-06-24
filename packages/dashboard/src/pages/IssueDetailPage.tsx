@@ -424,11 +424,13 @@ const ReplaySection = ({
 const CommentsSection = ({
   projectId,
   issueId,
-  isOwner
+  isOwner,
+  membersLoading
 }: {
   projectId: string;
   issueId: string;
   isOwner: boolean;
+  membersLoading: boolean;
 }): ReactNode => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -471,17 +473,20 @@ const CommentsSection = ({
   });
 
   const list = comments.data?.comments ?? [];
+  // Hold the list until membership is known too, so owner-only delete buttons
+  // render in their final state instead of flashing in after members resolve.
+  const ready = !comments.isLoading && !membersLoading;
 
   return (
     <section className="card">
       <h3>코멘트</h3>
-      {comments.isLoading && <Spinner />}
+      {(comments.isLoading || membersLoading) && <Spinner />}
       {comments.isError && <p className="error">코멘트를 불러오지 못했습니다.</p>}
-      {!comments.isLoading && !comments.isError && list.length === 0 && (
+      {ready && !comments.isError && list.length === 0 && (
         <p className="muted">코멘트 없음</p>
       )}
       <ul className="crumbs">
-        {list.map((comment) => {
+        {ready && list.map((comment) => {
           const canDelete = isOwner || comment.author.userId === user?.id;
           return (
             <li key={comment.id}>
@@ -866,7 +871,12 @@ export const IssueDetailPage = (): ReactNode => {
         />
       )}
 
-      <CommentsSection projectId={projectId} issueId={issueId} isOwner={isOwner} />
+      <CommentsSection
+        projectId={projectId}
+        issueId={issueId}
+        isOwner={isOwner}
+        membersLoading={members.isLoading}
+      />
     </div>
   );
 };
