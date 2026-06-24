@@ -109,6 +109,7 @@ model Issue {
   fingerprint   String
   title         String
   culprit       String?
+  firstRelease  String?
   level         IssueLevel     @default(error)
   status        IssueStatus    @default(unresolved)
   timesSeen     Int            @default(0)
@@ -158,6 +159,7 @@ model Event {
   level          IssueLevel
   environment    String?
   release        String?
+  isRegression   Boolean    @default(false)
   sdkName        String?
   sdkVersion     String?
   requestUrl     String?
@@ -169,6 +171,9 @@ model Event {
 
   @@index([issueId, receivedAt])
   @@index([projectId, receivedAt])
+  // Backs the release regression view: filter regression events by (project, release).
+  // isRegression last (low-selectivity boolean) — fine for the release-fixed query.
+  @@index([projectId, release, isRegression])
   @@index([clientEventId])
   @@index([projectId, release])
   @@index([projectId, environment])

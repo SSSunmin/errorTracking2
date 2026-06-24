@@ -92,4 +92,56 @@ describe("processEvent", () => {
     expect(different.isNew).toBe(true);
     expect(different.issueId).not.toBe(first.issueId);
   });
+
+  test("records firstRelease on issue creation and isRegression=false for normal events", async () => {
+    const projectId = await createProject();
+    const result = await processEvent(projectId, makePayload("Release boom"));
+
+    const issue = await prisma.issue.findUniqueOrThrow({
+      where: { id: result.issueId }
+    });
+    expect(issue.firstRelease).toBe("1.0.0");
+
+    const event = await prisma.event.findUniqueOrThrow({
+      where: { id: result.eventId }
+    });
+    expect(event.isRegression).toBe(false);
+
+    // A second non-regression event on the same issue is also not a regression.
+    const second = await processEvent(projectId, makePayload("Release boom"));
+    const secondEvent = await prisma.event.findUniqueOrThrow({
+      where: { id: second.eventId }
+    });
+    expect(second.regressed).toBe(false);
+    expect(secondEvent.isRegression).toBe(false);
+  });
+
+  test("marks regression event and reverts resolved issue to unresolved", async () => {
+    const projectId = await createProject();
+    const first = await processEvent(projectId, makePayload("Regress boom"));
+
+    // Resolve the issue, then a new event arrives → regression.
+    await prisma.issue.update({
+      where: { id: first.issueId },
+      data: { status: "resolved" }
+    });
+
+    const regression = await processEvent(
+      projectId,
+      makePayload("Regress boom")
+    );
+    expect(regression.issueId).toBe(first.issueId);
+    expect(regression.regressed).toBe(true);
+
+    const regressionEvent = await prisma.event.findUniqueOrThrow({
+      where: { id: regression.eventId }
+    });
+    expect(regressionEvent.isRegression).toBe(true);
+    expect(regressionEvent.release).toBe("1.0.0");
+
+    const issue = await prisma.issue.findUniqueOrThrow({
+      where: { id: first.issueId }
+    });
+    expect(issue.status).toBe("unresolved");
+  });
 });

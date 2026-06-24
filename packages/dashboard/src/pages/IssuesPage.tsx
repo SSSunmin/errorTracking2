@@ -69,6 +69,9 @@ export const IssuesPage = (): ReactNode => {
           <Link className="ghost" to={`/projects/${projectId}/members`}>
             멤버
           </Link>
+          <Link className="ghost" to={`/projects/${projectId}/releases`}>
+            릴리스 회귀
+          </Link>
           <Link className="ghost" to={`/projects/${projectId}/alerts`}>
             알림 규칙
           </Link>

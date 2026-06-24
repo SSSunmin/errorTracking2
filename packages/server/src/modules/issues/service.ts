@@ -499,6 +499,56 @@ export const getIssueStats = async (
   };
 };
 
+const releaseIssuesLimit = 100;
+
+export const getReleaseIssues = async (
+  ownerId: string,
+  projectId: string,
+  release: string
+): Promise<{
+  release: string;
+  newIssues: IssueListItemDto[];
+  newIssuesTruncated: boolean;
+  regressedIssues: IssueListItemDto[];
+  regressedIssuesTruncated: boolean;
+}> => {
+  await ensureOwnedProject(ownerId, projectId);
+
+  // New issues: first appeared in this release (firstRelease recorded on create).
+  // Regressed issues: have at least one regression event tagged with this release
+  // (events.some on isRegression + release); `ignored` is excluded since the user
+  // has already triaged it away from the active list. The two lists are derived
+  // from different signals and may overlap if an issue both debuted and regressed
+  // in the same release — callers can dedupe if needed.
+  // take limit+1 so we can report truncation rather than silently dropping rows.
+  const [newIssues, regressedIssues] = await Promise.all([
+    prisma.issue.findMany({
+      where: { projectId, firstRelease: release },
+      include: { assignee: assigneeSelect },
+      orderBy: { lastSeen: "desc" },
+      take: releaseIssuesLimit + 1
+    }),
+    prisma.issue.findMany({
+      where: {
+        projectId,
+        status: { not: "ignored" },
+        events: { some: { isRegression: true, release } }
+      },
+      include: { assignee: assigneeSelect },
+      orderBy: { lastSeen: "desc" },
+      take: releaseIssuesLimit + 1
+    })
+  ]);
+
+  return {
+    release,
+    newIssues: newIssues.slice(0, releaseIssuesLimit).map(toIssueListItem),
+    newIssuesTruncated: newIssues.length > releaseIssuesLimit,
+    regressedIssues: regressedIssues.slice(0, releaseIssuesLimit).map(toIssueListItem),
+    regressedIssuesTruncated: regressedIssues.length > releaseIssuesLimit
+  };
+};
+
 export const updateIssueStatus = async (
   ownerId: string,
   projectId: string,

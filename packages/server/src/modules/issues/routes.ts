@@ -9,6 +9,7 @@ import {
   getEventSnapshot,
   getIssue,
   getIssueStats,
+  getReleaseIssues,
   listIssueComments,
   listIssueEvents,
   listIssueFacets,
@@ -32,6 +33,8 @@ import {
   listEventsQuerySchema,
   listIssuesQuerySchema,
   listIssuesResponseSchema,
+  releaseIssuesParamsSchema,
+  releaseIssuesResponseSchema,
   updateAssigneeSchema,
   updateIssueResponseSchema,
   updateIssueSchema
@@ -181,6 +184,24 @@ export const issueRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
         request.params.id,
         request.params.issueId,
         request.query
+      )
+  );
+
+  app.get(
+    "/:id/releases/:release/issues",
+    {
+      schema: {
+        params: releaseIssuesParamsSchema,
+        response: {
+          200: releaseIssuesResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      getReleaseIssues(
+        getUserId(request),
+        request.params.id,
+        request.params.release
       )
   );
 
