@@ -2,7 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
-## 2026-06-23 (P3 이슈 담당자 + 코멘트 — feat/issue-assignee-comments)
+## 2026-06-24 (프로젝트 설정·DSN 키 owner-role 게이팅 — feat/dashboard-ux-profile, PR #18 리뷰 반영)
+- **접근제어 강화**: `updateProject`·`createProjectKey`·`rotateProjectKey`·`updateProjectKey`를 멤버십 검사(아무 member) → **owner 역할 전용**(`getAdminProject` 신규 헬퍼)으로 전환. 멤버 관리(owner-only)와 정책 일치. 비멤버 404·비owner 멤버 403. 읽기(GET project/keys/members)와 이슈 작업은 멤버 그대로.
+- **프로젝트 API(`api/projects-api`)**: 접근제어 절 + PATCH/:id·키 변경 3종에 owner-role 전용 명시. (기존 문서의 "프로젝트 삭제 404" 오기 → 코드·테스트대로 **403** 정정.)
+- **테스트**: `membership.test.ts` +1(비owner 멤버의 설정 수정·키 생성/회전/토글 403, 승격된 owner-role 멤버는 200/201). 멤버십 8 green.
 - **DB(`database/data-model`)**: `Issue.assigneeId?`(→User, `onDelete: SetNull`, `@@index([assigneeId])`) + `assignee`/`comments` 관계 추가. 새 모델 `IssueComment(issueId→Issue Cascade, authorId→User Cascade, body, createdAt, @@index([issueId, createdAt]))`. `User`에 `assignedIssues[]`·`comments[]` 역관계. 모델 수 12→13. 마이그레이션 `20260623130000_issue_assignee_comments`(드리프트 회피 위해 SQL 수기 작성 후 `migrate deploy` 적용 — 공유 dev DB).
 - **이슈 API(`api/issues-api`)**: 엔드포인트 3종 추가. `PATCH /:id/issues/:issueId/assignee`(멤버 접근, assigneeId null 가능, 비null은 **프로젝트 멤버여야** 함→아니면 400). `GET/POST /:id/issues/:issueId/comments`(멤버 접근, 목록 createdAt asc·최대 200, body 트림 1–5000자). `DELETE .../comments/:commentId`(작성자 본인 또는 owner-role 멤버만→403, 없으면 404). `IssueListItem`에 `assignee:{userId,email,name}|null`(목록·상세 양쪽, relation include). 새 응답 타입 `IssueComment`.
 - **대시보드**: `IssueDetailPage`에 담당자 셀렉트(members 쿼리 재사용) + `CommentsSection`(목록/textarea 작성/삭제 — 작성자·owner에게만 삭제 버튼, useAuth.user.id + 멤버 role로 판정). `api.ts`에 `IssueAssignee`/`IssueComment` 타입 + setAssignee/listComments/addComment/deleteComment.
