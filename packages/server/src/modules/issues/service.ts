@@ -602,5 +602,8 @@ export const deleteIssueComment = async (
     }
   }
 
-  await prisma.issueComment.delete({ where: { id: commentId } });
+  // Scope the delete to the issue too: the findFirst above already proves the
+  // comment belongs to this issue, but keeping issueId here is a defense-in-depth
+  // guard so the two checks can't drift apart in future edits.
+  await prisma.issueComment.delete({ where: { id: commentId, issueId } });
 };

@@ -341,4 +341,39 @@ describe("issue comments", () => {
     });
     expect(byStranger.statusCode).toBe(404);
   });
+
+  test("a comment cannot be deleted through a different issue's URL → 404", async () => {
+    const owner = await register("cmt-xissue-owner@example.com");
+    const { project } = await createProject(owner, "Comment Cross Issue");
+    const issueOne = await processEvent(project.id, makePayload());
+    const issueTwo = await processEvent(project.id, makePayload());
+    expect(issueOne.issueId).not.toBe(issueTwo.issueId);
+
+    const created = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/issues/${issueOne.issueId}/comments`,
+      headers: authHeaders(owner),
+      payload: { body: "on issue one" }
+    });
+    expect(created.statusCode).toBe(201);
+    const commentId = commentResponseSchema.parse(created.json<unknown>())
+      .comment.id;
+
+    // Same project + owner, but the wrong issue in the path: the comment does
+    // not belong to issueTwo, so it must not be deletable here.
+    const wrongIssue = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${project.id}/issues/${issueTwo.issueId}/comments/${commentId}`,
+      headers: authHeaders(owner)
+    });
+    expect(wrongIssue.statusCode).toBe(404);
+
+    // It is still deletable through its own issue.
+    const ownIssue = await app.inject({
+      method: "DELETE",
+      url: `/api/projects/${project.id}/issues/${issueOne.issueId}/comments/${commentId}`,
+      headers: authHeaders(owner)
+    });
+    expect(ownIssue.statusCode).toBe(204);
+  });
 });
