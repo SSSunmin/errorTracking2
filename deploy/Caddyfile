@@ -1,0 +1,63 @@
+# Mini-Sentry production reverse proxy / static server.
+# Two origins from the same /srv bundle:
+#   - {$DASHBOARD_DOMAIN}: the dashboard SPA + /api proxy to the server container.
+#   - {$REPLAY_DOMAIN}:    the isolated replay viewer (no /api, no SPA fallback),
+#                          with a frame-ancestors CSP so only the dashboard may
+#                          iframe-embed it (anti-clickjacking; <meta> can't set it).
+# Domains/port come from env (passed to the caddy container in docker-compose.prod.yml).
+# TLS: Caddy auto-provisions certs on a real VPS (ports 80/443 open, public DNS).
+
+# DASHBOARD_DOMAIN / REPLAY_DOMAIN must be bare hostnames (no scheme, no slash):
+#   DASHBOARD_DOMAIN=dash.example.com   (NOT https://dash.example.com)
+# The frame-ancestors value below prepends https:// itself — a scheme in the var
+# would produce `https://https://…` and silently break the replay iframe.
+
+# ── Dashboard origin ─────────────────────────────────────────────────────────
+{$DASHBOARD_DOMAIN} {
+	# The dashboard holds tokens/cookies, so it must never be iframe-embeddable
+	# (clickjacking). X-Frame-Options for legacy browsers without CSP support.
+	header Content-Security-Policy "frame-ancestors 'none'"
+	header X-Frame-Options "DENY"
+	header X-Content-Type-Options "nosniff"
+	header Referrer-Policy "strict-origin-when-cross-origin"
+
+	# Same-origin /api proxy → no CORS, refresh cookie works. `server` is the
+	# compose service name; API_PORT defaults to 4000.
+	handle /api/* {
+		reverse_proxy server:{$API_PORT:4000}
+	}
+
+	# SPA: serve the built assets, fall back to index.html for client routes.
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}
+
+# ── Replay viewer origin (isolated) ──────────────────────────────────────────
+{$REPLAY_DOMAIN} {
+	# Block arbitrary sites from iframe-embedding the viewer (clickjacking).
+	# Only the dashboard origin is allowed as a frame ancestor.
+	header Content-Security-Policy "frame-ancestors https://{$DASHBOARD_DOMAIN}"
+	header X-Content-Type-Options "nosniff"
+
+	root * /srv
+
+	# Serve ONLY the viewer entry and its assets from the shared bundle — never
+	# index.html (the dashboard SPA) or anything else. The viewer must stay
+	# token/network-free; everything outside this allowlist 404s.
+	@viewer path /replay-viewer.html /assets/*
+	handle @viewer {
+		file_server
+	}
+	handle {
+		respond 404
+	}
+}
+
+# ── Cloudflare Tunnel (free, test) alternative ───────────────────────────────
+# When fronting with a Cloudflare Tunnel (no public 80/443, Cloudflare terminates
+# TLS), disable Caddy's own TLS so it serves plain HTTP behind the tunnel by
+# prefixing both site addresses with `http://` (e.g. `http://{$DASHBOARD_DOMAIN}`)
+# and pointing the tunnel's two public hostnames at this container's :80.
