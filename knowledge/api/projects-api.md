@@ -12,7 +12,7 @@ timestamp: 2026-06-16
 - 베이스 경로: `/api/projects`
 - 출처: `packages/server/src/modules/projects/routes.ts`, `schemas.ts`
 - 인증: **모든 엔드포인트 인증 필요**(`preHandler: requireAuth`).
-- 접근제어: **멤버십 기반**(P3). 그 프로젝트의 멤버(owner|member)면 모든 프로젝트/키 기능에 접근. 예외 — **프로젝트 삭제와 멤버 관리(추가/역할변경/삭제)는 owner 전용**(`Project.ownerId` 한정). 비멤버는 404(존재 비노출), 멤버이지만 비owner가 owner 전용 작업 시도 시 멤버 관리는 403, 프로젝트 삭제는 404. 출처: [데이터 모델 ProjectMember](/database/data-model.md).
+- 접근제어: **멤버십 기반**(P3). 비멤버는 전 엔드포인트 404(존재 비노출). 멤버(owner|member)는 **읽기**(프로젝트/키/멤버 조회)와 이슈 작업에 접근. **owner 역할 전용 작업**: 프로젝트 설정 수정(PATCH /:id), DSN 키 관리(생성/회전/토글), 멤버 관리(추가/역할변경/삭제) — 비owner 멤버가 시도하면 403. **프로젝트 삭제는 founder(`Project.ownerId`) 전용** — 다른 멤버는 403. 출처: [데이터 모델 ProjectMember](/database/data-model.md).
 
 ## 프로젝트
 
@@ -27,25 +27,32 @@ timestamp: 2026-06-16
 - 200: `{ project: { id, name, slug, platform, createdAt, updatedAt } }`
 
 ### PATCH /:id — 수정
+- 접근: **owner 역할 전용** (비owner 멤버 403)
 - Body: `name?`, `platform?`
 - 200: `{ project }`
 
 ### DELETE /:id — 삭제
+- 접근: **founder(`Project.ownerId`) 전용** (다른 멤버 403)
 - 204: 본문 없음 (연관 키/이슈/이벤트/알림은 Cascade 삭제)
 
 ## 프로젝트 키 (DSN)
+
+키 변경(생성/회전/토글)은 **owner 역할 전용** — DSN은 SDK 인증정보. 목록 조회(GET)는 멤버 누구나.
 
 ### GET /:id/keys — 키 목록
 - 200: `{ keys: [ProjectKey] }`
 
 ### POST /:id/keys — 키 생성
+- 접근: **owner 역할 전용** (비owner 멤버 403)
 - Body: `label?`(1~120)
 - 201: `{ key, dsn }`
 
 ### POST /:id/keys/:keyId/rotate — 키 회전
+- 접근: **owner 역할 전용** (비owner 멤버 403)
 - 201: `{ key, dsn }` (새 publicKey 발급)
 
 ### PATCH /:id/keys/:keyId — 키 수정(활성화 토글)
+- 접근: **owner 역할 전용** (비owner 멤버 403)
 - Body: `isActive`(boolean)
 - 200: `{ key, dsn }`
 

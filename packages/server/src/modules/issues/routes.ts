@@ -3,15 +3,22 @@ import type { FastifyPluginCallbackZod } from "fastify-type-provider-zod";
 
 import { unauthorized } from "../../lib/errors.js";
 import {
+  createIssueComment,
+  deleteIssueComment,
   getEventReplay,
   getEventSnapshot,
   getIssue,
   getIssueStats,
+  listIssueComments,
   listIssueEvents,
   listIssues,
+  setIssueAssignee,
   updateIssueStatus
 } from "./service.js";
 import {
+  commentParamsSchema,
+  commentResponseSchema,
+  createCommentSchema,
   eventSnapshotParamsSchema,
   eventSnapshotResponseSchema,
   issueDetailResponseSchema,
@@ -19,9 +26,11 @@ import {
   issueParamsSchema,
   issueStatsQuerySchema,
   issueStatsResponseSchema,
+  listCommentsResponseSchema,
   listEventsQuerySchema,
   listIssuesQuerySchema,
   listIssuesResponseSchema,
+  updateAssigneeSchema,
   updateIssueResponseSchema,
   updateIssueSchema
 } from "./schemas.js";
@@ -177,6 +186,86 @@ export const issueRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
         request.params.issueId,
         request.body
       )
+  );
+
+  app.patch(
+    "/:id/issues/:issueId/assignee",
+    {
+      schema: {
+        params: issueParamsSchema,
+        body: updateAssigneeSchema,
+        response: {
+          200: updateIssueResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      setIssueAssignee(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId,
+        request.body
+      )
+  );
+
+  app.get(
+    "/:id/issues/:issueId/comments",
+    {
+      schema: {
+        params: issueParamsSchema,
+        response: {
+          200: listCommentsResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      listIssueComments(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId
+      )
+  );
+
+  app.post(
+    "/:id/issues/:issueId/comments",
+    {
+      schema: {
+        params: issueParamsSchema,
+        body: createCommentSchema,
+        response: {
+          201: commentResponseSchema
+        }
+      }
+    },
+    async (request, reply) => {
+      const response = await createIssueComment(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId,
+        request.body
+      );
+
+      return reply.status(201).send(response);
+    }
+  );
+
+  app.delete(
+    "/:id/issues/:issueId/comments/:commentId",
+    {
+      schema: {
+        params: commentParamsSchema
+      }
+    },
+    async (request, reply) => {
+      await deleteIssueComment(
+        getUserId(request),
+        request.params.id,
+        request.params.issueId,
+        request.params.commentId
+      );
+
+      return reply.status(204).send();
+    }
   );
 
   done();

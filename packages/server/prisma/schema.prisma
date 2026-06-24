@@ -53,6 +53,8 @@ model User {
   projects      Project[]
   memberships   ProjectMember[]
   refreshTokens RefreshToken[]
+  assignedIssues Issue[]        @relation("IssueAssignee")
+  comments      IssueComment[]
 }
 
 model Project {
@@ -114,12 +116,28 @@ model Issue {
   lastSeen      DateTime
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
+  assigneeId    String?
+  assignee      User?          @relation("IssueAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   events        Event[]
   notifications Notification[]
+  comments      IssueComment[]
 
   @@unique([projectId, fingerprint])
   @@index([projectId, status])
   @@index([projectId, lastSeen])
+  @@index([assigneeId])
+}
+
+model IssueComment {
+  id        String   @id @default(cuid())
+  issueId   String
+  issue     Issue    @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String
+  createdAt DateTime @default(now())
+
+  @@index([issueId, createdAt])
 }
 
 model Event {

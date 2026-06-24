@@ -1,14 +1,22 @@
 import { Prisma, type Event, type Issue, type IssueStatus } from "@prisma/client";
 
-import { notFound } from "../../lib/errors.js";
+import { badRequest, forbidden, notFound } from "../../lib/errors.js";
 import { prisma } from "../../lib/prisma.js";
 import { symbolicateEvents } from "../sourcemaps/service.js";
 import type {
+  CreateCommentInput,
   IssueStatsQuery,
   ListEventsQuery,
   ListIssuesQuery,
+  UpdateAssigneeInput,
   UpdateIssueInput
 } from "./schemas.js";
+
+interface IssueAssigneeDto {
+  userId: string;
+  email: string;
+  name: string | null;
+}
 
 interface IssueListItemDto {
   id: string;
@@ -19,7 +27,34 @@ interface IssueListItemDto {
   timesSeen: number;
   firstSeen: string;
   lastSeen: string;
+  assignee: IssueAssigneeDto | null;
 }
+
+interface IssueCommentDto {
+  id: string;
+  body: string;
+  author: IssueAssigneeDto;
+  createdAt: string;
+}
+
+// At most this many comments are returned per issue (oldest first). Threads on a
+// single issue are expected to be small; this is a safety cap, consistent with
+// other list endpoints that bound their result size.
+const maxComments = 200;
+
+// Prisma `select` that pulls the assignee's public fields for DTO mapping.
+const assigneeSelect = {
+  select: { id: true, email: true, name: true }
+};
+
+type IssueWithAssignee = Issue & {
+  assignee: { id: string; email: string; name: string | null } | null;
+};
+
+const toAssigneeDto = (
+  user: { id: string; email: string; name: string | null } | null
+): IssueAssigneeDto | null =>
+  user ? { userId: user.id, email: user.email, name: user.name } : null;
 
 interface EventSummaryDto {
   id: string;
@@ -109,7 +144,7 @@ const resolveStacktraces = async (
   return resolved;
 };
 
-const toIssueListItem = (issue: Issue): IssueListItemDto => ({
+const toIssueListItem = (issue: IssueWithAssignee): IssueListItemDto => ({
   id: issue.id,
   title: issue.title,
   culprit: issue.culprit,
@@ -117,7 +152,8 @@ const toIssueListItem = (issue: Issue): IssueListItemDto => ({
   status: issue.status,
   timesSeen: issue.timesSeen,
   firstSeen: issue.firstSeen.toISOString(),
-  lastSeen: issue.lastSeen.toISOString()
+  lastSeen: issue.lastSeen.toISOString(),
+  assignee: toAssigneeDto(issue.assignee)
 });
 
 const toEventSummary = (event: Event): EventSummaryDto => ({
@@ -175,7 +211,7 @@ const ensureOwnedIssue = async (
   ownerId: string,
   projectId: string,
   issueId: string
-): Promise<Issue> => {
+): Promise<IssueWithAssignee> => {
   const issue = await prisma.issue.findFirst({
     where: {
       id: issueId,
@@ -183,7 +219,8 @@ const ensureOwnedIssue = async (
       project: {
         members: { some: { userId: ownerId } }
       }
-    }
+    },
+    include: { assignee: assigneeSelect }
   });
 
   if (!issue) {
@@ -228,6 +265,7 @@ export const listIssues = async (
           }
         : {})
     },
+    include: { assignee: assigneeSelect },
     orderBy: {
       [query.sort]: "desc"
     },
@@ -440,10 +478,129 @@ export const updateIssueStatus = async (
     where: { id: issueId },
     data: {
       status: input.status as IssueStatus
-    }
+    },
+    include: { assignee: assigneeSelect }
   });
 
   return {
     issue: toIssueListItem(issue)
   };
+};
+
+export const setIssueAssignee = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string,
+  input: UpdateAssigneeInput
+): Promise<{ issue: IssueListItemDto }> => {
+  // Any member may (re)assign; prove issue membership first (non-members 404).
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  // A non-null assignee must be a member of THIS project. We check membership
+  // (not mere user existence) so issues can only be assigned to teammates. The
+  // membership check and the update run in one transaction so a member removed
+  // in between can't slip through (TOCTOU).
+  const issue = await prisma.$transaction(async (tx) => {
+    if (input.assigneeId !== null) {
+      const member = await tx.projectMember.findUnique({
+        where: {
+          projectId_userId: { projectId, userId: input.assigneeId }
+        },
+        select: { userId: true }
+      });
+      if (!member) {
+        throw badRequest("Assignee must be a member of this project");
+      }
+    }
+
+    return tx.issue.update({
+      where: { id: issueId },
+      data: { assigneeId: input.assigneeId },
+      include: { assignee: assigneeSelect }
+    });
+  });
+
+  return {
+    issue: toIssueListItem(issue)
+  };
+};
+
+const toCommentDto = (comment: {
+  id: string;
+  body: string;
+  createdAt: Date;
+  author: { id: string; email: string; name: string | null };
+}): IssueCommentDto => ({
+  id: comment.id,
+  body: comment.body,
+  author: {
+    userId: comment.author.id,
+    email: comment.author.email,
+    name: comment.author.name
+  },
+  createdAt: comment.createdAt.toISOString()
+});
+
+export const listIssueComments = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string
+): Promise<{ comments: IssueCommentDto[] }> => {
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  const comments = await prisma.issueComment.findMany({
+    where: { issueId },
+    include: { author: { select: { id: true, email: true, name: true } } },
+    orderBy: { createdAt: "asc" },
+    take: maxComments
+  });
+
+  return { comments: comments.map(toCommentDto) };
+};
+
+export const createIssueComment = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string,
+  input: CreateCommentInput
+): Promise<{ comment: IssueCommentDto }> => {
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  const comment = await prisma.issueComment.create({
+    data: { issueId, authorId: ownerId, body: input.body },
+    include: { author: { select: { id: true, email: true, name: true } } }
+  });
+
+  return { comment: toCommentDto(comment) };
+};
+
+export const deleteIssueComment = async (
+  ownerId: string,
+  projectId: string,
+  issueId: string,
+  commentId: string
+): Promise<void> => {
+  await ensureOwnedIssue(ownerId, projectId, issueId);
+
+  const comment = await prisma.issueComment.findFirst({
+    where: { id: commentId, issueId },
+    select: { authorId: true }
+  });
+  if (!comment) {
+    throw notFound("Comment not found");
+  }
+
+  // The author may always delete their own comment; otherwise only an
+  // owner-role member of the project may delete it.
+  if (comment.authorId !== ownerId) {
+    const membership = await prisma.projectMember.findUnique({
+      where: { projectId_userId: { projectId, userId: ownerId } },
+      select: { role: true }
+    });
+    if (membership?.role !== "owner") {
+      throw forbidden("Only the author or a project owner can delete this comment");
+    }
+  }
+
+  await prisma.issueComment.delete({ where: { id: commentId } });
 };

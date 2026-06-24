@@ -9,8 +9,13 @@ import {
   issueAccessToken,
   verifyPassword
 } from "../../lib/tokens.js";
-import { conflict, unauthorized } from "../../lib/errors.js";
-import type { LoginInput, RegisterInput } from "./schemas.js";
+import { badRequest, conflict, unauthorized } from "../../lib/errors.js";
+import type {
+  ChangePasswordInput,
+  LoginInput,
+  RegisterInput,
+  UpdateProfileInput
+} from "./schemas.js";
 
 const userSelect = {
   id: true,
@@ -125,6 +130,75 @@ export const getCurrentUser = async (userId: string): Promise<PublicUserDto> => 
   }
 
   return toPublicUser(user);
+};
+
+export const updateProfile = async (
+  userId: string,
+  input: UpdateProfileInput
+): Promise<PublicUserDto> => {
+  try {
+    const user = await prisma.user.update({
+      where: { id: userId },
+      data: { name: input.name },
+      select: userSelect
+    });
+
+    return toPublicUser(user);
+  } catch (error) {
+    // Stale token for a since-deleted user → treat as invalid (like getCurrentUser)
+    // rather than surfacing a 500.
+    if (
+      error instanceof Prisma.PrismaClientKnownRequestError &&
+      error.code === "P2025"
+    ) {
+      throw unauthorized("Invalid access token");
+    }
+    throw error;
+  }
+};
+
+export const changePassword = async (
+  userId: string,
+  input: ChangePasswordInput
+): Promise<IssuedTokens> => {
+  const user = await prisma.user.findUnique({ where: { id: userId } });
+  if (!user) {
+    throw unauthorized("Invalid access token");
+  }
+  // 400 (not 401) for a wrong current password: the caller is already
+  // authenticated, and the dashboard's request() retries 401s through a token
+  // refresh — which would be wrong here. (Verify-then-update isn't transactional,
+  // but a concurrent self-change is benign: both attempts know the password.)
+  if (!(await verifyPassword(user.passwordHash, input.currentPassword))) {
+    throw badRequest("Current password is incorrect");
+  }
+  // The schema rejects new === current as plaintext; also reject a new password
+  // that actually matches the stored hash (e.g. differs only by what was typed).
+  if (await verifyPassword(user.passwordHash, input.newPassword)) {
+    throw badRequest("New password must differ from the current one");
+  }
+
+  const passwordHash = await hashPassword(input.newPassword);
+
+  // Update the hash, revoke every existing session (so other devices are logged
+  // out), and mint a fresh pair for the current session — all atomically.
+  return prisma.$transaction(async (tx) => {
+    await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    await tx.refreshToken.updateMany({
+      where: { userId, revokedAt: null },
+      data: { revokedAt: new Date() }
+    });
+
+    return issueTokenPair(
+      {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        createdAt: user.createdAt
+      },
+      tx
+    );
+  });
 };
 
 export const rotateRefreshToken = async (

@@ -112,7 +112,7 @@ timestamp: 2026-06-22
 - `GET /:id/issues`에 필터 4종 추가(마이그레이션 없음): `level`(Issue.level 직접일치), `release`/`environment`(해당 이벤트를 가진 이슈만 — `events.some`, 둘 다 주면 같은 이벤트가 동시 충족), `since`/`until`(Issue.lastSeen inclusive 범위, since>until→400). 기존 status/query/sort/cursor 유지.
 - 대시보드 `IssuesPage`에 레벨 셀렉트·환경/릴리스 입력·기간(date) 입력 추가(로컬 날짜→UTC inclusive 경계 변환).
 - 테스트 +7(level/release/environment/combined/range/검증). 전체 156 green. 근거: [소스맵 API](/api/issues-api.md) 갱신.
-- **follow-up(비차단)**: ① `Event.release`·`environment` 인덱스 부재 — Phase 1 소규모 OK, 대용량 전환 시 `@@index([issueId, release])` 등 추가 권고. ② release/environment 자동완성 드롭다운(현재 자유 텍스트) — distinct 값 엔드포인트 신설 시. ③ 이슈 담당자/코멘트, 환경·릴리스 회귀 보기, 통계 차트 개선은 미착수.
+- **follow-up(비차단)**: ① `Event.release`·`environment` 인덱스 부재 — Phase 1 소규모 OK, 대용량 전환 시 `@@index([issueId, release])` 등 추가 권고. ② release/environment 자동완성 드롭다운(현재 자유 텍스트) — distinct 값 엔드포인트 신설 시. ③ 환경·릴리스 회귀 보기, 통계 차트 개선은 미착수(이슈 담당자/코멘트는 C3b에서 완료).
 
 ### 팀/멤버십 모델 + 접근제어 재설계 (C3a) — 완료 (2026-06-23, feat/team-membership)
 - 단일 소유자(`Project.ownerId`) → **멤버십 기반 접근제어**. 새 모델 `ProjectMember(projectId, userId, role: owner|member)` + enum `ProjectRole`. 마이그레이션 `20260623120000_project_membership`(기존 프로젝트 owner를 멤버로 백필).
@@ -120,6 +120,14 @@ timestamp: 2026-06-22
 - 멤버 관리 API 4종(`GET/POST /:id/members`, `PATCH/DELETE /:id/members/:userId`): owner 전용 판정 `userId === Project.ownerId`. 소유자 강등/제거 방지(400), 중복 409, 미존재 User 404. 대시보드 `MembersPage` + 이슈 페이지 링크.
 - 테스트 +5(membership.test.ts: owner membership 생성/멤버 접근·비멤버 404/listProjects 포함/비owner 거부/멤버 CRUD). 전체 161 green. 근거: [데이터 모델](/database/data-model.md), [프로젝트 API](/api/projects-api.md).
 - **불변식 유지**: 소유자가 모든 걸 하던 기존 테스트 전부 통과(백필로 owner가 멤버이므로).
+
+### 이슈 담당자 + 코멘트 (C3b) — 완료 (2026-06-23, feat/issue-assignee-comments)
+- 스키마: `Issue.assigneeId?`(→User, `onDelete: SetNull`, `@@index([assigneeId])`) + 새 모델 `IssueComment(issueId, authorId, body, createdAt, @@index([issueId, createdAt]))`. 마이그레이션 `20260623130000_issue_assignee_comments`.
+- 담당자: `PATCH /:id/issues/:issueId/assignee` `{ assigneeId: string|null }`. 멤버 접근(비멤버 404), 지정 대상은 **해당 프로젝트 멤버여야 함**(`ProjectMember` 확인, 아니면 400 — 단순 User 존재로는 불충분). `assignee:{userId,email,name}|null`을 getIssue·listIssues(relation include) 양쪽에 노출.
+- 코멘트: `GET/POST /:id/issues/:issueId/comments`(멤버 접근, 목록 createdAt asc·최대 200, body 트림 1–5000자), `DELETE .../comments/:commentId`(작성자 본인 또는 owner-role 멤버만, 그 외 403, 없으면 404).
+- 대시보드: `IssueDetailPage`에 담당자 셀렉트(멤버 목록 재사용) + 코멘트 스레드(목록/작성/삭제 — 작성자·owner에게만 삭제 버튼). `api.ts`에 setAssignee/listComments/addComment/deleteComment.
+- 테스트 +7(issueAssigneeComments.test.ts: 지정/해제·비멤버 지정 400·비멤버 호출 404·노출, 코멘트 생성/순서·비멤버 404·삭제 권한 3종·미존재 404·빈 body 400). 전체 170 green.
+- **설계 판단**: 담당자 검증은 멤버십(존재만 X)으로 외부인 배정 차단. 코멘트 삭제 권한은 멤버 권한 모델(owner-role)과 일관 — 작성자 self-delete + owner 모더레이션.
 
 **의존성**: 일부는 스키마 추가 필요(environment 등). 비차단, 범위가 넓어 개별 티켓화 권장.
 

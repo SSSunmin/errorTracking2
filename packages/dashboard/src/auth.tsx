@@ -15,6 +15,8 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (email: string, password: string, name?: string) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (name: string) => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | null>(null);
@@ -60,6 +62,17 @@ export const AuthProvider = ({ children }: { children: ReactNode }): ReactNode =
         await api.logout().catch(() => undefined);
         setAccessToken(null);
         setUser(null);
+      },
+      updateProfile: async (name) => {
+        const updated = await api.updateProfile(name);
+        setUser(updated);
+      },
+      changePassword: async (currentPassword, newPassword) => {
+        // Server rotates the session (revokes others, mints a fresh pair); adopt
+        // the new access token so the current session keeps working.
+        const result = await api.changePassword(currentPassword, newPassword);
+        setAccessToken(result.accessToken);
+        setUser(result.user);
       }
     }),
     [user, loading]
