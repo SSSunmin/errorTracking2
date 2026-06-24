@@ -218,6 +218,78 @@ describe("project membership", () => {
     expect(addResponse.statusCode).toBe(403);
   });
 
+  test("non-owner member cannot change project settings or manage DSN keys; an owner-role member can", async () => {
+    const founder = await register("mem-settings-founder@example.com");
+    const member = await register("mem-settings-member@example.com");
+    const promoted = await register("mem-settings-promoted@example.com");
+    const created = await createProject(founder, "Settings Project");
+    const keyId = created.key.id;
+
+    await addMember(
+      founder,
+      created.project.id,
+      "mem-settings-member@example.com"
+    );
+
+    // A plain member may read the project and list keys, but cannot mutate
+    // settings or DSN credentials — all owner-role-only (403, not 404: the
+    // project plainly exists for them).
+    const updateByMember = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${created.project.id}`,
+      headers: authHeaders(member),
+      payload: { name: "Renamed By Member" }
+    });
+    expect(updateByMember.statusCode).toBe(403);
+
+    const createKeyByMember = await app.inject({
+      method: "POST",
+      url: `/api/projects/${created.project.id}/keys`,
+      headers: authHeaders(member),
+      payload: { label: "member key" }
+    });
+    expect(createKeyByMember.statusCode).toBe(403);
+
+    const rotateByMember = await app.inject({
+      method: "POST",
+      url: `/api/projects/${created.project.id}/keys/${keyId}/rotate`,
+      headers: authHeaders(member)
+    });
+    expect(rotateByMember.statusCode).toBe(403);
+
+    const toggleByMember = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${created.project.id}/keys/${keyId}`,
+      headers: authHeaders(member),
+      payload: { isActive: false }
+    });
+    expect(toggleByMember.statusCode).toBe(403);
+
+    // Promote a second member to owner role: settings and keys open up.
+    await addMember(
+      founder,
+      created.project.id,
+      "mem-settings-promoted@example.com",
+      "owner"
+    );
+
+    const updateByOwner = await app.inject({
+      method: "PATCH",
+      url: `/api/projects/${created.project.id}`,
+      headers: authHeaders(promoted),
+      payload: { name: "Renamed By Owner" }
+    });
+    expect(updateByOwner.statusCode).toBe(200);
+
+    const createKeyByOwner = await app.inject({
+      method: "POST",
+      url: `/api/projects/${created.project.id}/keys`,
+      headers: authHeaders(promoted),
+      payload: { label: "owner key" }
+    });
+    expect(createKeyByOwner.statusCode).toBe(201);
+  });
+
   test("non-members are denied keys, alert-rules, and sourcemaps; access ends on removal", async () => {
     const owner = await register("mem-iso-owner@example.com");
     const stranger = await register("mem-iso-stranger@example.com");

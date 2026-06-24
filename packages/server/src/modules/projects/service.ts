@@ -137,6 +137,29 @@ const getOwnedProject = async (
   return project;
 };
 
+// Owner-role access: the caller must be an OWNER-role member. Non-members get
+// notFound (don't leak existence); plain members get forbidden. Used for project
+// settings and DSN key management — consistent with member management
+// (ensureProjectAdmin).
+const getAdminProject = async (
+  projectId: string,
+  ownerId: string
+): Promise<Project> => {
+  const membership = await prisma.projectMember.findUnique({
+    where: { projectId_userId: { projectId, userId: ownerId } },
+    select: { role: true }
+  });
+
+  if (!membership) {
+    throw notFound("Project not found");
+  }
+  if (membership.role !== "owner") {
+    throw forbidden("Only project owners can modify this project");
+  }
+
+  return getOwnedProject(projectId, ownerId);
+};
+
 const getOwnedProjectKey = async (
   projectId: string,
   ownerId: string,
@@ -253,9 +276,9 @@ export const updateProject = async (
   projectId: string,
   input: UpdateProjectInput
 ): Promise<{ project: ProjectDto }> => {
-  // Any member may update; prove membership first, then update by id (Prisma's
-  // update `where` can't take a relation filter).
-  await getOwnedProject(projectId, ownerId);
+  // Owner-role only; prove the caller is an owner first, then update by id
+  // (Prisma's update `where` can't take a relation filter).
+  await getAdminProject(projectId, ownerId);
 
   const project = await prisma.project.update({
     where: { id: projectId },
@@ -316,7 +339,8 @@ export const createProjectKey = async (
   projectId: string,
   input: CreateProjectKeyInput
 ): Promise<{ key: ProjectKeyDto; dsn: string }> => {
-  await getOwnedProject(projectId, ownerId);
+  // Owner-role only: DSN keys are SDK credentials.
+  await getAdminProject(projectId, ownerId);
 
   const key = await prisma.projectKey.create({
     data: {
@@ -339,6 +363,8 @@ export const rotateProjectKey = async (
   projectId: string,
   keyId: string
 ): Promise<{ key: ProjectKeyDto; dsn: string }> => {
+  // Owner-role only: rotation deactivates the existing DSN credential.
+  await getAdminProject(projectId, ownerId);
   const oldKey = await getOwnedProjectKey(projectId, ownerId, keyId);
 
   const newKey = await prisma.$transaction(async (tx) => {
@@ -370,8 +396,8 @@ export const updateProjectKey = async (
   keyId: string,
   input: UpdateProjectKeyInput
 ): Promise<{ key: ProjectKeyDto; dsn: string }> => {
-  // Any member may update keys; prove membership, then update by id + project.
-  await getOwnedProject(projectId, ownerId);
+  // Owner-role only; prove the caller is an owner, then update by id + project.
+  await getAdminProject(projectId, ownerId);
 
   try {
     const key = await prisma.projectKey.update({
