@@ -2,6 +2,13 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-23 (P3 팀/멤버십 모델 + 접근제어 재설계 — feat/team-membership)
+- **DB(`database/data-model`)**: 새 모델 `ProjectMember(projectId, userId, role)` + enum `ProjectRole(owner|member)` 추가. `User.memberships[]`·`Project.members[]` 관계 추가. `Project.ownerId`는 소유자 포인터로 유지(접근제어는 멤버십 기반). 마이그레이션 `20260623120000_project_membership`(기존 프로젝트 owner를 owner-role 멤버로 백필).
+- **접근제어**: 단일 소유자(`ownerId` 일치) 검사 → 멤버십(`members.some.userId`) 검사로 전환. 4개 서비스(`projects`/`issues`/`sourcemaps`/`alert-rules`)의 ensure/get 헬퍼·`listProjects`·`createProject`(owner membership nested create)·update/delete where 교체(시그니처 유지, 최소 diff). **owner 전용**: 프로젝트 삭제(`{id, ownerId}` 유지), 멤버 관리.
+- **프로젝트 API(`api/projects-api`)**: 접근제어 멤버십 기반 명시 + 멤버 관리 4종(`GET/POST /:id/members`, `PATCH/DELETE /:id/members/:userId`) 문서화. GET은 멤버, 나머지는 owner 전용. 소유자 강등/제거 400, 중복 409, 미존재 User 404.
+- **대시보드**: `MembersPage` 신규(멤버 목록 + owner일 때 이메일 추가/역할/삭제), 라우트 `/projects/:projectId/members`, 이슈 페이지에 링크. `api.ts`에 listMembers/addMember/updateMemberRole/removeMember.
+- **테스트**: `membership.test.ts` +5. 전체 161 green(기존 회귀 0 — 소유자 백필로 불변식 유지).
+
 ## 2026-06-23 (P3 이슈 검색/필터 강화 — feat/retention-pruning)
 - **이슈 API(`api/issues-api`)**: `GET /:id/issues` 쿼리 파라미터에 신규 필터 4종 추가 반영. `level`(Issue.level 완전일치), `release`/`environment`(Event 관계 기반 `some` 매칭 — 동시 지정 시 같은 이벤트 하나가 양쪽 충족 필요), `since`/`until`(Issue.lastSeen inclusive 범위, `since > until`이면 400). 필터 의미론 절 신규(각 필터 구현 방식 명시). 알려진 한계 2종 추가: Event.release·environment 전용 인덱스 없음(대용량 시 추가 권고), release/environment 자동완성 미구현(자유 텍스트 입력).
 - **index.md**: 이슈 API 항목 설명에 신규 필터 명시.

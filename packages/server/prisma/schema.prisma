@@ -38,6 +38,11 @@ enum NotificationStatus {
   failed
 }
 
+enum ProjectRole {
+  owner
+  member
+}
+
 model User {
   id            String         @id @default(cuid())
   email         String         @unique
@@ -46,6 +51,7 @@ model User {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   projects      Project[]
+  memberships   ProjectMember[]
   refreshTokens RefreshToken[]
 }
 
@@ -63,8 +69,22 @@ model Project {
   events     Event[]
   alertRules AlertRule[]
   sourceMaps SourceMap[]
+  members    ProjectMember[]
 
   @@index([ownerId])
+}
+
+model ProjectMember {
+  id        String      @id @default(cuid())
+  projectId String
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      ProjectRole @default(member)
+  createdAt DateTime    @default(now())
+
+  @@unique([projectId, userId])
+  @@index([userId])
 }
 
 model ProjectKey {

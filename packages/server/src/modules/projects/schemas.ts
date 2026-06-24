@@ -30,6 +30,38 @@ export const updateProjectKeySchema = z.object({
   isActive: z.boolean()
 });
 
+export const memberParamsSchema = z.object({
+  id: cuidLikeSchema,
+  userId: cuidLikeSchema
+});
+
+const projectRoleSchema = z.enum(["owner", "member"]);
+
+export const addMemberSchema = z.object({
+  email: z.email().trim().toLowerCase(),
+  role: projectRoleSchema.optional()
+});
+
+export const updateMemberSchema = z.object({
+  role: projectRoleSchema
+});
+
+export const projectMemberSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  name: z.string().nullable(),
+  role: projectRoleSchema,
+  createdAt: z.string()
+});
+
+export const listMembersResponseSchema = z.object({
+  members: z.array(projectMemberSchema)
+});
+
+export const memberResponseSchema = z.object({
+  member: projectMemberSchema
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -81,3 +113,5 @@ export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 export type CreateProjectKeyInput = z.infer<typeof createProjectKeySchema>;
 export type UpdateProjectKeyInput = z.infer<typeof updateProjectKeySchema>;
+export type AddMemberInput = z.infer<typeof addMemberSchema>;
+export type UpdateMemberInput = z.infer<typeof updateMemberSchema>;

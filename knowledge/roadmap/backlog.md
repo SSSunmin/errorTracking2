@@ -114,6 +114,13 @@ timestamp: 2026-06-22
 - 테스트 +7(level/release/environment/combined/range/검증). 전체 156 green. 근거: [소스맵 API](/api/issues-api.md) 갱신.
 - **follow-up(비차단)**: ① `Event.release`·`environment` 인덱스 부재 — Phase 1 소규모 OK, 대용량 전환 시 `@@index([issueId, release])` 등 추가 권고. ② release/environment 자동완성 드롭다운(현재 자유 텍스트) — distinct 값 엔드포인트 신설 시. ③ 이슈 담당자/코멘트, 환경·릴리스 회귀 보기, 통계 차트 개선은 미착수.
 
+### 팀/멤버십 모델 + 접근제어 재설계 (C3a) — 완료 (2026-06-23, feat/team-membership)
+- 단일 소유자(`Project.ownerId`) → **멤버십 기반 접근제어**. 새 모델 `ProjectMember(projectId, userId, role: owner|member)` + enum `ProjectRole`. 마이그레이션 `20260623120000_project_membership`(기존 프로젝트 owner를 멤버로 백필).
+- 4개 서비스(`projects`/`issues`/`sourcemaps`/`alert-rules`)의 접근 헬퍼를 `members: { some: { userId } }`로 교체(시그니처 유지, 최소 diff). update/delete는 멤버십 선검사 후 `{id}`로 수행. **owner 전용**: 프로젝트 삭제(`{id, ownerId}` 유지), 멤버 관리.
+- 멤버 관리 API 4종(`GET/POST /:id/members`, `PATCH/DELETE /:id/members/:userId`): owner 전용 판정 `userId === Project.ownerId`. 소유자 강등/제거 방지(400), 중복 409, 미존재 User 404. 대시보드 `MembersPage` + 이슈 페이지 링크.
+- 테스트 +5(membership.test.ts: owner membership 생성/멤버 접근·비멤버 404/listProjects 포함/비owner 거부/멤버 CRUD). 전체 161 green. 근거: [데이터 모델](/database/data-model.md), [프로젝트 API](/api/projects-api.md).
+- **불변식 유지**: 소유자가 모든 걸 하던 기존 테스트 전부 통과(백필로 owner가 멤버이므로).
+
 **의존성**: 일부는 스키마 추가 필요(environment 등). 비차단, 범위가 넓어 개별 티켓화 권장.
 
 ---
