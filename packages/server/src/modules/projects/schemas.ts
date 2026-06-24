@@ -62,6 +62,23 @@ export const memberResponseSchema = z.object({
   member: projectMemberSchema
 });
 
+export const projectStatsQuerySchema = z.object({
+  window: z.enum(["24h", "7d"]).default("24h")
+});
+
+export const projectStatsResponseSchema = z.object({
+  buckets: z.array(
+    z.object({
+      bucket: z.string(),
+      count: z.number().int()
+    })
+  ),
+  totalEvents: z.number().int(),
+  // Distinct users affected within the window, counted by userContext->>'id'
+  // (the SDK's user.id). Events without a user.id are excluded.
+  affectedUsers: z.number().int()
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -109,6 +126,7 @@ export const projectKeyResponseSchema = z.object({
   dsn: z.string()
 });
 
+export type ProjectStatsQuery = z.infer<typeof projectStatsQuerySchema>;
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 export type CreateProjectKeyInput = z.infer<typeof createProjectKeySchema>;

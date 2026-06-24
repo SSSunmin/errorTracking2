@@ -39,6 +39,13 @@ OKF 번들의 변경 이력. 최신 항목이 위.
 - **index.md**: 이슈 API·데이터 모델 항목 설명 갱신.
 - **코드**: `prisma/schema.prisma`+마이그레이션, `process.ts`(firstRelease·isRegression 기록, 핫패스 보수적), `issues/{schemas,service,routes}.ts`, 대시보드 `ReleasesPage.tsx`(신규 라우트)·`App.tsx`·`IssuesPage.tsx`(링크)·`api.ts`. 테스트 +7(process 2·엔드포인트 5). typecheck·lint·전체 테스트 162개 그린.
 
+## 2026-06-23 (P3 통계 차트 개선 — feat/stats-charts)
+- **이슈 API(`api/issues-api`)**: `GET /:id/issues/:issueId/stats` 응답에 `affectedUsers` 추가 — window 내 distinct `userContext->>'id'`(= SDK `user.id`), null id 제외, 이메일 등 fallback 범위 외. 별도 `$queryRaw`(`COUNT(DISTINCT ... ) WHERE ... IS NOT NULL`)로 buckets와 동일 시간창 집계.
+- **프로젝트 API(`api/projects-api`)**: `GET /:id/stats?window=24h|7d` 엔드포인트 신규. 프로젝트 전체 이벤트(모든 이슈 합산) 버킷 집계 + `totalEvents` + `affectedUsers`. 응답 `{ buckets, totalEvents, affectedUsers }`. 소유권 미보유 404(`getProject` 패턴). 마이그레이션 없음.
+- **대시보드**: `IssueDetailPage`에 "영향 사용자 N명" 텍스트, `IssuesPage` 상단에 프로젝트 추세 차트(기존 SVG `StatsChart` 재사용)+24h/7d 토글+전체/영향 사용자 요약. `api.ts`에 `getProjectStats` 추가, `getStats` 반환에 `affectedUsers` 추가.
+- **코드**: `modules/issues/{service,schemas}.ts`·`modules/projects/{service,schemas,routes}.ts`·`dashboard/src/{api.ts,pages/IssueDetailPage.tsx,pages/IssuesPage.tsx}`. 테스트 `tests/statsCharts.test.ts` 신규 4개. typecheck·lint clean, 전체 160 green.
+- **index.md**: 프로젝트 API 항목 설명에 stats 명시.
+
 ## 2026-06-23 (P3 이슈 검색/필터 강화 — feat/retention-pruning)
 - **이슈 API(`api/issues-api`)**: `GET /:id/issues` 쿼리 파라미터에 신규 필터 4종 추가 반영. `level`(Issue.level 완전일치), `release`/`environment`(Event 관계 기반 `some` 매칭 — 동시 지정 시 같은 이벤트 하나가 양쪽 충족 필요), `since`/`until`(Issue.lastSeen inclusive 범위, `since > until`이면 400). 필터 의미론 절 신규(각 필터 구현 방식 명시). 알려진 한계 2종 추가: Event.release·environment 전용 인덱스 없음(대용량 시 추가 권고), release/environment 자동완성 미구현(자유 텍스트 입력).
 - **index.md**: 이슈 API 항목 설명에 신규 필터 명시.

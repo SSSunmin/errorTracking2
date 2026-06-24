@@ -1,10 +1,10 @@
 ---
 type: API Reference
 title: 프로젝트 API
-description: 프로젝트와 프로젝트 키(DSN) CRUD. 전 엔드포인트 인증 필요.
+description: 프로젝트와 프로젝트 키(DSN) CRUD + 프로젝트 단위 이벤트 통계(stats). 전 엔드포인트 인증 필요.
 resource: packages/server/src/modules/projects/routes.ts
-tags: [api, projects, keys, dsn, fastify]
-timestamp: 2026-06-16
+tags: [api, projects, keys, dsn, fastify, stats]
+timestamp: 2026-06-23
 ---
 
 # 프로젝트 API
@@ -34,6 +34,16 @@ timestamp: 2026-06-16
 ### DELETE /:id — 삭제
 - 접근: **founder(`Project.ownerId`) 전용** (다른 멤버 403)
 - 204: 본문 없음 (연관 키/이슈/이벤트/알림은 Cascade 삭제)
+
+### GET /:id/stats — 프로젝트 단위 이벤트 통계
+프로젝트 **전체 이벤트**(모든 이슈 합산)에 대한 발생 빈도 버킷 통계. PostgreSQL `date_trunc` GROUP BY.
+
+- Query: `window` = `24h`(시간 버킷) | `7d`(일 버킷). 기본 `24h`.
+- 200: `{ buckets: { bucket: string, count: number }[], totalEvents: number, affectedUsers: number }`
+  - `buckets` — ISO datetime 문자열 정렬.
+  - `totalEvents` — window 내 전체 이벤트 수.
+  - `affectedUsers` — window 내 distinct `userContext->>'id'`(= SDK `user.id`) 개수. `user.id` 없는 이벤트 제외, 이메일 등 fallback은 범위 외.
+- 소유권 미보유 시 404 (`getProject`와 동일 패턴).
 
 ## 프로젝트 키 (DSN)
 

@@ -355,8 +355,13 @@ export const api = {
     projectId: string,
     issueId: string,
     window: "24h" | "7d"
-  ): Promise<{ buckets: StatBucket[] }> =>
+  ): Promise<{ buckets: StatBucket[]; affectedUsers: number }> =>
     request(`/api/projects/${projectId}/issues/${issueId}/stats?window=${window}`),
+  getProjectStats: (
+    projectId: string,
+    window: "24h" | "7d"
+  ): Promise<{ buckets: StatBucket[]; totalEvents: number; affectedUsers: number }> =>
+    request(`/api/projects/${projectId}/stats?window=${window}`),
   getEventSnapshot: (
     projectId: string,
     issueId: string,

@@ -101,7 +101,9 @@ timestamp: 2026-06-23
 
 **쿼리:** `window` = `24h`(시간 버킷) | `7d`(일 버킷). 기본 `24h`.
 
-**응답 200:** `{ buckets: { bucket: string, count: number }[] }` (ISO datetime 문자열 정렬)
+**응답 200:** `{ buckets: { bucket: string, count: number }[], affectedUsers: number }` (buckets는 ISO datetime 문자열 정렬)
+
+- `affectedUsers` — 해당 window 내 이 이슈 이벤트의 **distinct `userContext->>'id'`** 개수(= SDK `user.id`). `user.id`가 없는 이벤트는 제외하며, 이메일 등 fallback 식별자는 범위 외다. bucket별이 아니라 window 전체 합계 1개 숫자.
 
 ### PATCH `/:id/issues/:issueId`
 이슈 상태 변경.

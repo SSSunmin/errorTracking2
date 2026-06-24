@@ -25,7 +25,7 @@
 
 ### API
 - [인증 API](/api/auth-api.md) — register / login / refresh / logout / me
-- [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD·멤버 관리(멤버십 기반 접근제어)
+- [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD·멤버 관리(멤버십 기반 접근제어) + 프로젝트 단위 통계(stats)
 - [인제스트 API](/api/ingest-api.md) — POST /:projectId/store 이벤트 수집
 - [이슈 API](/api/issues-api.md) — 이슈 목록·상세·상태 변경·담당자(assignee)·코멘트 (level/release/environment/since/until 필터 + facets 자동완성 엔드포인트 + 릴리스 회귀 보기, hasReplay, 심볼리케이션 포함)
 - [세션 리플레이 API](/api/replay-api.md) — 리플레이 업로드(DSN 인증) + 조회(JWT 인증)
