@@ -11,6 +11,7 @@ import {
   getIssueStats,
   listIssueComments,
   listIssueEvents,
+  listIssueFacets,
   listIssues,
   setIssueAssignee,
   updateIssueStatus
@@ -23,6 +24,7 @@ import {
   eventSnapshotResponseSchema,
   issueDetailResponseSchema,
   issueEventsResponseSchema,
+  issueFacetsResponseSchema,
   issueParamsSchema,
   issueStatsQuerySchema,
   issueStatsResponseSchema,
@@ -59,6 +61,20 @@ export const issueRoutes: FastifyPluginCallbackZod = (app, _options, done) => {
     },
     async (request) =>
       listIssues(getUserId(request), request.params.id, request.query)
+  );
+
+  app.get(
+    "/:id/issues/facets",
+    {
+      schema: {
+        params: issueParamsSchema.pick({ id: true }),
+        response: {
+          200: issueFacetsResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      listIssueFacets(getUserId(request), request.params.id)
   );
 
   app.get(

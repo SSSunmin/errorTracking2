@@ -288,6 +288,40 @@ export const listIssues = async (
   };
 };
 
+export const listIssueFacets = async (
+  ownerId: string,
+  projectId: string
+): Promise<{ releases: string[]; environments: string[] }> => {
+  await ensureOwnedProject(ownerId, projectId);
+
+  // Distinct release/environment values for this project's events, for the
+  // dashboard filter autocomplete. null excluded, asc, capped at 100 each.
+  // Raw SQL (like getIssueStats) so the plan is a guaranteed DISTINCT + ORDER BY
+  // + LIMIT that uses the (projectId, release)/(projectId, environment) indexes,
+  // rather than relying on what Prisma's `distinct` happens to generate.
+  const [releaseRows, environmentRows] = await Promise.all([
+    prisma.$queryRaw<{ value: string }[]>`
+      SELECT DISTINCT "release" AS value
+      FROM "Event"
+      WHERE "projectId" = ${projectId} AND "release" IS NOT NULL
+      ORDER BY "release" ASC
+      LIMIT 100
+    `,
+    prisma.$queryRaw<{ value: string }[]>`
+      SELECT DISTINCT "environment" AS value
+      FROM "Event"
+      WHERE "projectId" = ${projectId} AND "environment" IS NOT NULL
+      ORDER BY "environment" ASC
+      LIMIT 100
+    `
+  ]);
+
+  return {
+    releases: releaseRows.map((row) => row.value),
+    environments: environmentRows.map((row) => row.value)
+  };
+};
+
 export const getIssue = async (
   ownerId: string,
   projectId: string,

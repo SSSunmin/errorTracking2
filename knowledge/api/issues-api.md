@@ -1,7 +1,7 @@
 ---
 type: API Reference
 title: 이슈 API
-description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 멤버십 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 + 담당자(assignee)·코멘트(P3).
+description: 이슈 목록/상세/이벤트/통계/스냅샷/리플레이 조회 및 상태 변경 엔드포인트. JWT 인증 + 프로젝트 멤버십 스코프. 이벤트 조회 시 소스맵 심볼리케이션 lazy 적용. level/release/environment/since/until 필터 + 필터 자동완성용 facets 엔드포인트 + 담당자(assignee)·코멘트(P3).
 resource: packages/server/src/modules/issues/routes.ts
 tags: [api, issues, events, stats, pagination, snapshot, replay, symbolication, filter, assignee, comments]
 timestamp: 2026-06-23
@@ -38,12 +38,19 @@ timestamp: 2026-06-23
 - `release` / `environment` — `Event` 테이블 기반 관계 필터. 해당 값을 가진 이벤트가 **하나 이상(some)** 속한 이슈만 반환한다. 두 파라미터를 **동시에** 지정하면 **같은 이벤트 하나**가 `release`와 `environment`를 모두 충족해야 매치된다(Prisma `events: { some: { release, environment } }`로 구현). 각각 단독 지정하면 독립 필터.
 - `since` / `until` — `Issue.lastSeen` 기준 inclusive 범위. `z.coerce.date()`로 파싱하므로 ISO 8601 문자열 전달. `since > until`이면 스키마 레벨 refine에서 400 반환.
 
-**알려진 한계:**
-
-- `Event.release` · `Event.environment` 컬럼에 **전용 인덱스가 없다**(Phase 1 소규모 환경에서는 허용). 대용량 운영 시 `@@index([projectId, release])` / `@@index([projectId, environment])` 인덱스 추가를 권고한다.
-- `release` · `environment` 필터 값은 **자유 텍스트 입력**이다. 프로젝트 내 실제 값 자동완성 드롭다운은 미구현(후속 작업).
-
 **응답 200:** `{ issues: IssueListItem[], nextCursor: string | null }`
+
+> `release`·`environment` 필터를 받쳐줄 `@@index([projectId, release])` / `@@index([projectId, environment])` 인덱스가 추가됨(마이그레이션 `20260623042723_event_release_env_index`). 자동완성용 distinct 값은 아래 facets 엔드포인트로 제공.
+
+### GET `/:id/issues/facets`
+이슈 필터(릴리스/환경) 자동완성을 위해, 해당 프로젝트 이벤트의 **distinct release / distinct environment** 값을 반환한다. **JWT 인증 + 프로젝트 소유권** 필수.
+
+- null 값 제외, 오름차순 정렬, 각 최대 **100개**(LIMIT). `$queryRaw`의 `SELECT DISTINCT ... ORDER BY ... LIMIT`로 산출해 위 인덱스를 타도록 보장(`getIssueStats`와 동일한 raw 패턴).
+- **100개 초과 시 조용히 잘린다** — 자동완성은 제안일 뿐 자유 텍스트 입력이 가능하므로 목록에 없는 값도 직접 입력해 필터링할 수 있다.
+- 정적 세그먼트 `facets`는 Fastify에서 파라미터 `:issueId`보다 우선 매칭되므로 `/:id/issues/:issueId`와 충돌하지 않는다.
+- 대시보드 `IssuesPage`가 이 엔드포인트로 환경/릴리스 입력에 `<datalist>` 자동완성을 채운다(자유 텍스트 입력은 유지 — 제안만).
+
+**응답 200:** `{ releases: string[], environments: string[] }`
 
 ### GET `/:id/issues/:issueId`
 이슈 상세 조회 (최신 이벤트 요약 포함).

@@ -326,6 +326,10 @@ export const api = {
     const qs = search.toString();
     return request(`/api/projects/${projectId}/issues${qs ? `?${qs}` : ""}`);
   },
+  listIssueFacets: (
+    projectId: string
+  ): Promise<{ releases: string[]; environments: string[] }> =>
+    request(`/api/projects/${projectId}/issues/facets`),
   getIssue: (
     projectId: string,
     issueId: string
