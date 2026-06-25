@@ -578,6 +578,7 @@ curl -X POST http://localhost:4100/api/projects/<projectId>/alert-rules \
 
 ## 관련 문서
 
+- [지도(맵) 타일 에러 수집 가이드](./MAP-ERROR-TRACKING.md) — MapLibre·네이버 지도 타일 실패 연결
 - [ACCOUNTS.md](./ACCOUNTS.md) — 데모/테스트 계정
 - [브라우저 SDK](../knowledge/architecture/sdk.md) · [인제스트 파이프라인](../knowledge/architecture/ingestion-pipeline.md)
 - [인증 API](../knowledge/api/auth-api.md) · [프로젝트 API](../knowledge/api/projects-api.md) · [이슈 API](../knowledge/api/issues-api.md) · [알림 규칙 API](../knowledge/api/alerts-api.md)
