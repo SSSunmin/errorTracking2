@@ -277,7 +277,7 @@ export const getProjectStats = async (
   projectId: string,
   query: ProjectStatsQuery
 ): Promise<{
-  buckets: { bucket: string; count: number }[];
+  buckets: { bucket: string; count: number; users: number }[];
   totalEvents: number;
   affectedUsers: number;
 }> => {
@@ -290,9 +290,16 @@ export const getProjectStats = async (
   const since = new Date(now.getTime() - windowMs);
   const truncUnit = query.window === "24h" ? "hour" : "day";
 
-  // Bucketed counts over the whole project's events in the window.
-  const rows = await prisma.$queryRaw<{ bucket: Date; count: bigint }[]>`
-    SELECT date_trunc(${truncUnit}, "receivedAt") AS bucket, COUNT(*)::bigint AS count
+  // Bucketed counts + distinct affected users per bucket over the whole
+  // project's events in the window. users keyed by userContext->>'id' (the
+  // SDK's user.id); events without a user.id excluded from the distinct count.
+  const rows = await prisma.$queryRaw<
+    { bucket: Date; count: bigint; users: bigint }[]
+  >`
+    SELECT date_trunc(${truncUnit}, "receivedAt") AS bucket,
+      COUNT(*)::bigint AS count,
+      (COUNT(DISTINCT "userContext"->>'id')
+        FILTER (WHERE "userContext"->>'id' IS NOT NULL))::bigint AS users
     FROM "Event"
     WHERE "projectId" = ${projectId}
       AND "receivedAt" >= ${since}
@@ -313,7 +320,8 @@ export const getProjectStats = async (
 
   const buckets = rows.map((row) => ({
     bucket: row.bucket.toISOString(),
-    count: Number(row.count)
+    count: Number(row.count),
+    users: Number(row.users)
   }));
 
   return {

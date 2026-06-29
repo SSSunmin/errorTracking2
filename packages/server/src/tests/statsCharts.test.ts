@@ -176,6 +176,46 @@ describe("issue stats affectedUsers", () => {
     expect(oldStats.buckets).toHaveLength(0);
   });
 
+  test("reports distinct affected users per bucket", async () => {
+    const owner = await register("issue-bucket-users@example.com");
+    const { project } = await createProject(owner, "Issue Bucket Users");
+    const a = await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u2" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { email: "no-id@x.com" } })
+    );
+    // A different issue in the same project must NOT bleed into issue A's bucket.
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue B", user: { id: "u9" } })
+    );
+
+    // Pin every event to one timestamp (1h ago, inside the 24h window) so the
+    // events land in a single hour bucket regardless of wall-clock boundary.
+    await prisma.event.updateMany({
+      where: { projectId: project.id },
+      data: { receivedAt: new Date(Date.now() - 60 * 60_000) }
+    });
+
+    const response = await getIssueStats(project.id, a.issueId, owner);
+    const stats = issueStatsResponseSchema.parse(response.json<unknown>());
+    expect(stats.buckets).toHaveLength(1);
+    // Only issue A's 4 events / 2 distinct users — issue B's u9 excluded.
+    expect(stats.buckets[0]?.count).toBe(4);
+    expect(stats.buckets[0]?.users).toBe(2);
+  });
+
   test("returns 404 for an issue whose project the caller does not own", async () => {
     const owner = await register("issue-stats-owner@example.com");
     const other = await register("issue-stats-other@example.com");
@@ -224,6 +264,71 @@ describe("project stats endpoint", () => {
     expect(stats.totalEvents).toBe(4);
     expect(stats.affectedUsers).toBe(2);
     expect(stats.buckets.reduce((sum, b) => sum + b.count, 0)).toBe(4);
+  });
+
+  test("reports distinct affected users per bucket", async () => {
+    const owner = await register("stats-bucket-users@example.com");
+    const { project } = await createProject(owner, "Bucket Users");
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue B", user: { id: "u2" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue B", user: { email: "no-id@x.com" } })
+    );
+
+    // Pin every event into a single hour bucket (see issue-stats test above).
+    await prisma.event.updateMany({
+      where: { projectId: project.id },
+      data: { receivedAt: new Date(Date.now() - 60 * 60_000) }
+    });
+
+    const response = await getProjectStats(project.id, owner);
+    const stats = projectStatsResponseSchema.parse(response.json<unknown>());
+    expect(stats.buckets).toHaveLength(1);
+    expect(stats.buckets[0]?.count).toBe(4);
+    expect(stats.buckets[0]?.users).toBe(2);
+  });
+
+  test("aggregates users independently per bucket over 7d", async () => {
+    const owner = await register("stats-multibucket@example.com");
+    const { project } = await createProject(owner, "Multi Bucket");
+    const dayOne = await processEvent(
+      project.id,
+      makePayload({ message: "day one", user: { id: "u1" } })
+    );
+    const dayTwo = await processEvent(
+      project.id,
+      makePayload({ message: "day two", user: { id: "u2" } })
+    );
+
+    // Pin each issue's event into a distinct day bucket within the 7d window.
+    await prisma.event.updateMany({
+      where: { issueId: dayOne.issueId },
+      data: { receivedAt: new Date(Date.now() - 2 * 24 * 60 * 60_000) }
+    });
+    await prisma.event.updateMany({
+      where: { issueId: dayTwo.issueId },
+      data: { receivedAt: new Date(Date.now() - 60 * 60_000) }
+    });
+
+    const response = await getProjectStats(project.id, owner, "7d");
+    const stats = projectStatsResponseSchema.parse(response.json<unknown>());
+    expect(stats.buckets).toHaveLength(2);
+    // ASC by bucket: older (u1) first, recent (u2) second — each its own user.
+    expect(stats.buckets.map((b) => b.users)).toEqual([1, 1]);
+    expect(stats.buckets.map((b) => b.count)).toEqual([1, 1]);
+    // Window total stays 2 distinct users.
+    expect(stats.affectedUsers).toBe(2);
   });
 
   test("does not mix events from other projects", async () => {

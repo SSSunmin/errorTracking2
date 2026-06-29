@@ -70,7 +70,9 @@ export const projectStatsResponseSchema = z.object({
   buckets: z.array(
     z.object({
       bucket: z.string(),
-      count: z.number().int()
+      count: z.number().int(),
+      // Distinct affected users in this bucket (userContext->>'id').
+      users: z.number().int()
     })
   ),
   totalEvents: z.number().int(),

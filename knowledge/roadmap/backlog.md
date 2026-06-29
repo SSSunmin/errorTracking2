@@ -114,7 +114,7 @@ timestamp: 2026-06-22
 - 프로젝트 단위 stats 신설: `GET /api/projects/:id/stats?window=24h|7d` → `{ buckets, totalEvents, affectedUsers }`. 프로젝트 전체 이벤트(모든 이슈 합산) 버킷 집계. 소유권 미보유 404.
 - 대시보드: `IssueDetailPage`에 "영향 사용자 N명" 표시. `IssuesPage` 상단에 프로젝트 추세 차트(기존 SVG `StatsChart` 재사용) + 24h/7d 토글 + 전체/영향 사용자 요약.
 - 테스트 +4(affectedUsers distinct/null/타이슈·window 제외, 프로젝트 합산, 프로젝트 격리, 소유권 404). 전체 160 green. 근거: [이슈 API](/api/issues-api.md)·[프로젝트 API](/api/projects-api.md) 갱신.
-- **follow-up(비차단)**: `affectedUsers`는 `user.id` 기준만 — 이메일 등 fallback 식별자는 범위 외. bucket별 사용자 수(시계열)·인덱스(`Event.receivedAt`)는 미착수.
+- **follow-up**: ① ~~bucket별 사용자 수(시계열)~~ → **완료(2026-06-29)**: project/issue stats 양쪽 `buckets[].users`(버킷별 distinct `user.id`) 추가 + 대시보드 `StatsChart` 영향-사용자 추세 오버레이. window 총합 `affectedUsers`는 중복 제거 위해 별도 쿼리 유지. 테스트 +2(버킷별 distinct 결정적 검증, 전체 201 green). ② ~~인덱스(`Event.receivedAt`)~~ → **이미 존재**(스키마에 `@@index([projectId, receivedAt])` — stats 쿼리 `projectId=? AND receivedAt>=?`를 커버. 2026-06-22 백로그 노트가 인덱스 추가 이전이라 outdated였음). ③ `affectedUsers`는 `user.id` 기준만 — 이메일 등 fallback 식별자는 여전히 범위 외(미착수).
 
 ### 검색/필터 강화 — 완료 (2026-06-23, feat/issue-search-filters)
 - `GET /:id/issues`에 필터 4종 추가(마이그레이션 없음): `level`(Issue.level 직접일치), `release`/`environment`(해당 이벤트를 가진 이슈만 — `events.some`, 둘 다 주면 같은 이벤트가 동시 충족), `since`/`until`(Issue.lastSeen inclusive 범위, since>until→400). 기존 status/query/sort/cursor 유지.
