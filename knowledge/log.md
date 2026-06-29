@@ -2,6 +2,10 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (DX — dev-up.ps1 견고화)
+- **스크립트(지식 외)** `scripts/dev-up.ps1`: `docker compose start`의 stderr가 스크립트 전역 `$ErrorActionPreference='Stop'` 하에서 종료성 `NativeCommandError`로 처리돼 39번째 줄에서 중단(→`up -d` 폴백 도달 못 함)되던 버그 수정. native(docker) 호출만 `ErrorActionPreference='Continue'`로 감싸 **종료코드로만 성공 판정**하는 `Invoke-Native { }` 헬퍼 도입(docker info/compose start/up 경유), `up -d`도 실패 시 명시적 throw로 Wait-For 타임아웃 대신 빠른 실패. 검증(PS 5.1): 옛 방식 중단 재현 + 새 헬퍼 exit code 반환·계속 진행, 실제 `compose start`/`info` exit 0.
+- **백로그(`roadmap/backlog`)**: "(소) DX"의 dev-up.ps1 견고화 완료 기록.
+
 ## 2026-06-29 (문서 정정 — P0 retention 완료 상태 반영)
 - **백로그(`roadmap/backlog`)**: P0 "데이터 보존/정리"가 코드상 이미 완료(PR #6·#7)인데 backlog는 "확정 계획(착수 예정)" 톤으로 뒤처져 있던 불일치 정정. impl-planner 재확인 + `retention.test.ts` 8 green 실행 확인 후 P0 섹션에 "### 완료 (2026-06-22, PR #6·#7)" 블록 추가(env·인덱스 마이그레이션·큐/스케줄러·prune 배치·워커·테스트·OKF 7단계 모두 구현 근거 명시), "권장 작업 순서" 요약도 현재 완료 상태로 갱신. 코드 변경 없음(문서만).
 - **재확인 사실**: 2026-06-22 이후 추가된 멤버십/담당자·코멘트/릴리스 회귀 마이그레이션 어느 것도 Event를 FK로 참조하지 않음(유일한 Event 참조는 `EventSnapshot.event` cascade) → retention 삭제 순서 무영향.

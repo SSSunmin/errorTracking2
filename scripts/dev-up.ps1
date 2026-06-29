@@ -24,20 +24,38 @@ function Start-Svc {
     Write-Host "launched: $Title" -ForegroundColor Green
 }
 
+# Native commands (docker) write progress/diagnostics to stderr. Under this script's
+# $ErrorActionPreference='Stop', a single stderr line surfaces as a terminating
+# NativeCommandError and aborts the whole run (e.g. `docker compose start` before the
+# containers exist). Run such commands with the preference relaxed for that call only
+# and judge success by the exit code, never by stderr.
+function Invoke-Native {
+    param([scriptblock]$Cmd)
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = 'Continue'
+    try { & $Cmd } finally { $ErrorActionPreference = $prev }
+    return $LASTEXITCODE
+}
+
 # 0) Docker daemon
-$dockerOk = $false
-try { docker info *> $null; $dockerOk = ($LASTEXITCODE -eq 0) } catch {}
+$dockerOk = (Invoke-Native { docker info *> $null }) -eq 0
 if (-not $dockerOk) {
     Write-Host "Docker daemon down -> starting Docker Desktop" -ForegroundColor Yellow
     $dd = "$env:ProgramFiles\Docker\Docker\Docker Desktop.exe"
     if (Test-Path $dd) { Start-Process $dd }
-    Wait-For 'docker daemon' { docker info *> $null; $LASTEXITCODE -eq 0 } 180 | Out-Null
+    Wait-For 'docker daemon' { (Invoke-Native { docker info *> $null }) -eq 0 } 180 | Out-Null
 }
 
 # 1+2) Infra (start if containers exist, else create)
 Set-Location $root
-docker compose start postgres redis 2>$null
-if ($LASTEXITCODE -ne 0) { docker compose up -d postgres redis }
+# `start` fails (and writes to stderr) when the containers don't exist yet — expected
+# on first run — so fall back to `up -d` to create them. If that also fails, stop with
+# a clear message instead of limping into a Wait-For timeout.
+if ((Invoke-Native { docker compose start postgres redis 2>$null }) -ne 0) {
+    if ((Invoke-Native { docker compose up -d postgres redis }) -ne 0) {
+        throw 'postgres/redis 컨테이너 기동 실패 — 위의 docker compose 출력을 확인하세요.'
+    }
+}
 Wait-For 'postgres' { (docker exec claude-codex-test2-postgres-1 pg_isready -U mini_sentry) -match 'accepting' } 60 | Out-Null
 Wait-For 'redis'    { (docker exec claude-codex-test2-redis-1 redis-cli ping) -match 'PONG' } 30 | Out-Null
 
