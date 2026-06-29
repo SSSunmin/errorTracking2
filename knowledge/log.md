@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (P3 — 프로젝트 환경별 집계 뷰)
+- **API 신설**: `GET /api/projects/:id/environments?window=24h|7d` → `{ environments: [{ environment: string|null, events, issues, affectedUsers }] }`. 이벤트를 `GROUP BY "environment"`로 롤업(환경별 이벤트 수·distinct 이슈·distinct 영향 사용자). null environment(태그 없음)는 한 행으로 합산. 정렬 `events DESC, "environment" ASC NULLS LAST`(결정적). 식별 키는 기존 stats와 동일한 `COALESCE(NULLIF(id,''),…email,…username)`. 소유권 미보유 404. 마이그레이션 없음(기존 `@@index([projectId, environment])` 활용).
+- **코드**: `modules/projects/{schemas,service,routes}.ts`(`projectEnvironmentStatsResponseSchema`·`getProjectEnvironmentStats`·라우트, window 스키마/`getOwnedProject` 재사용). raw SQL은 `${projectId}`/`${since}` 파라미터화(A03 안전), bigint→Number 변환.
+- **대시보드**: `IssuesPage`에 "환경별 분포" 카드(테이블, 환경명 클릭 시 기존 환경 필터 연동, null은 "(미지정)", isError 폴백). `api.getProjectEnvironments` + `EnvironmentStat` 타입.
+- **테스트(`tests/environmentStats.test.ts`, +4)**: 그룹화·정렬·null 행, 환경 간 중복 사용자 독립 카운트·user 없는 이벤트 제외, window 제외, 프로젝트 격리+비멤버 404. 전체 231 green, typecheck·lint·dashboard build clean.
+- **리뷰**: code-reviewer 별도 패스. 반영: IssuesPage `isError` 폴백(무한 Spinner 방지), `ORDER BY … NULLS LAST` 명시, 환경 간 중복 사용자 테스트 추가. (afterEach 정리 지적은 서버 프로젝트가 `setup.ts` beforeEach TRUNCATE로 전역 처리해 불요.)
+- **OKF**: [프로젝트 API](/api/projects-api.md) `GET /:id/environments` 절 + index 갱신.
+
 ## 2026-06-29 (P0/P2 follow-up — 릴리스 단위 고아 소스맵 정리)
 - **코드(`config/env`·`modules/retention/prune`)**: P0 retention 잡에 `SourceMap` 정리 단계 추가. 시간 단독이 아니라 **고아 릴리스**(`(projectId, release)`에 `Event`가 하나도 안 남음) + **grace**(`createdAt < cutoff`)인 맵만 삭제 — 활성 릴리스(이벤트 잔존)·신규 업로드(grace 내) 맵은 보호. 원래 P0가 소스맵을 제외한 이유("업로드 시각 기준 삭제 시 활성 릴리스 심볼리케이션 손상")를 정확히 해소. `RETENTION_SOURCEMAP_DAYS`(기본 0=비활성, 옵트인) 신설. prune 순서 replay→snapshot→event→**sourcemap**(마지막: 이벤트 prune 후 고아 상태를 봄, 같은 패스에서 정리된 릴리스 맵까지 연쇄). `pruneOrphanSourceMaps`(주입 가능한 `OrphanSourceMapDeleter`)·`PruneResult.sourcemap` 추가. 마이그레이션 없음(기존 `Event(projectId, release)` 인덱스 재사용).
 - **테스트(`tests/retention`)**: +7(고아 삭제·활성 릴리스 보호·grace 보호·disabled·이벤트prune 연쇄·배치 드레인·크로스프로젝트 격리), `err.partial.sourcemap` 단언 추가. retention 15 green, 전체 217 green, typecheck·lint clean.

@@ -334,6 +334,57 @@ export const getProjectStats = async (
   };
 };
 
+export const getProjectEnvironmentStats = async (
+  ownerId: string,
+  projectId: string,
+  query: ProjectStatsQuery
+): Promise<{
+  environments: {
+    environment: string | null;
+    events: number;
+    issues: number;
+    affectedUsers: number;
+  }[];
+}> => {
+  // Ownership check (404 when not owned), same pattern as getProjectStats.
+  await getOwnedProject(projectId, ownerId);
+
+  const now = new Date();
+  const windowMs =
+    query.window === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
+  const since = new Date(now.getTime() - windowMs);
+
+  // Per-environment rollup over the window: event volume, distinct issues, and
+  // distinct affected users (same id → email → username fallback key as the
+  // time-bucket stats). GROUP BY collapses NULL environments into a single row
+  // (events the SDK sent untagged); it is returned as `environment: null`.
+  // Busiest environment first; ties broken by name (the null row sorts last) for
+  // a deterministic order — NULLS LAST is made explicit so it never depends on a
+  // server default.
+  const rows = await prisma.$queryRaw<
+    { environment: string | null; events: bigint; issues: bigint; users: bigint }[]
+  >`
+    SELECT "environment" AS environment,
+      COUNT(*)::bigint AS events,
+      COUNT(DISTINCT "issueId")::bigint AS issues,
+      COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS users
+    FROM "Event"
+    WHERE "projectId" = ${projectId}
+      AND "receivedAt" >= ${since}
+    GROUP BY "environment"
+    ORDER BY events DESC, "environment" ASC NULLS LAST
+  `;
+
+  return {
+    environments: rows.map((row) => ({
+      environment: row.environment,
+      events: Number(row.events),
+      issues: Number(row.issues),
+      affectedUsers: Number(row.users)
+    }))
+  };
+};
+
 export const updateProject = async (
   ownerId: string,
   projectId: string,
