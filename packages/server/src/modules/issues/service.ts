@@ -484,13 +484,20 @@ export const getIssueStats = async (
   const windowMs = query.window === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
   const since = new Date(now.getTime() - windowMs);
   const truncUnit = query.window === "24h" ? "hour" : "day";
+  // Affected-user identity key falls back id → email → username, so a user the
+  // SDK identifies only by email/username still counts (Sentry's user-identifier
+  // precedence). NULLIF treats a blank string as absent so an empty id (`{id:""}`)
+  // falls through to email/username instead of collapsing every such event into
+  // one phantom user. COUNT(DISTINCT …) ignores rows where all three are null, so
+  // no explicit NOT NULL filter is needed. Limitation: the same person seen once
+  // with an id and once with only an email counts twice — there is no cross-key
+  // identity resolution.
   const rows = await prisma.$queryRaw<
     { bucket: Date; count: bigint; users: bigint }[]
   >`
     SELECT date_trunc(${truncUnit}, "receivedAt") AS bucket,
       COUNT(*)::bigint AS count,
-      (COUNT(DISTINCT "userContext"->>'id')
-        FILTER (WHERE "userContext"->>'id' IS NOT NULL))::bigint AS users
+      COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS users
     FROM "Event"
     WHERE "projectId" = ${projectId}
       AND "issueId" = ${issueId}
@@ -499,15 +506,13 @@ export const getIssueStats = async (
     ORDER BY bucket ASC
   `;
 
-  // Distinct affected users over the same window, keyed by userContext->>'id'
-  // (the SDK's user.id); events without a user.id are excluded.
+  // Distinct affected users over the same window, same id → email → username key.
   const affected = await prisma.$queryRaw<{ count: bigint }[]>`
-    SELECT COUNT(DISTINCT "userContext"->>'id')::bigint AS count
+    SELECT COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS count
     FROM "Event"
     WHERE "projectId" = ${projectId}
       AND "issueId" = ${issueId}
       AND "receivedAt" >= ${since}
-      AND "userContext"->>'id' IS NOT NULL
   `;
 
   return {

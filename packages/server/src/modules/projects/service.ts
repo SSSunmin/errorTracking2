@@ -291,15 +291,19 @@ export const getProjectStats = async (
   const truncUnit = query.window === "24h" ? "hour" : "day";
 
   // Bucketed counts + distinct affected users per bucket over the whole
-  // project's events in the window. users keyed by userContext->>'id' (the
-  // SDK's user.id); events without a user.id excluded from the distinct count.
+  // project's events in the window. The affected-user identity key falls back
+  // id → email → username, so a user the SDK identifies only by email/username
+  // still counts (Sentry's user-identifier precedence). NULLIF treats a blank
+  // string as absent so an empty id (`{id:""}`) falls through to email/username.
+  // COUNT(DISTINCT …) ignores rows where all three are null. Limitation: the same
+  // person seen once with an id and once with only an email counts twice — there
+  // is no cross-key identity resolution.
   const rows = await prisma.$queryRaw<
     { bucket: Date; count: bigint; users: bigint }[]
   >`
     SELECT date_trunc(${truncUnit}, "receivedAt") AS bucket,
       COUNT(*)::bigint AS count,
-      (COUNT(DISTINCT "userContext"->>'id')
-        FILTER (WHERE "userContext"->>'id' IS NOT NULL))::bigint AS users
+      COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS users
     FROM "Event"
     WHERE "projectId" = ${projectId}
       AND "receivedAt" >= ${since}
@@ -307,12 +311,9 @@ export const getProjectStats = async (
     ORDER BY bucket ASC
   `;
 
-  // Distinct affected users keyed by userContext->>'id' (the SDK's user.id);
-  // events without a user.id excluded. Parenthesize the aggregate before the
-  // cast so ::bigint applies to COUNT(...) FILTER(...) as a whole.
+  // Distinct affected users over the window, same id → email → username key.
   const userRows = await prisma.$queryRaw<{ users: bigint }[]>`
-    SELECT (COUNT(DISTINCT "userContext"->>'id')
-      FILTER (WHERE "userContext"->>'id' IS NOT NULL))::bigint AS users
+    SELECT COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS users
     FROM "Event"
     WHERE "projectId" = ${projectId}
       AND "receivedAt" >= ${since}

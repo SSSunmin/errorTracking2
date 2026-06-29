@@ -40,9 +40,9 @@ timestamp: 2026-06-23
 
 - Query: `window` = `24h`(시간 버킷) | `7d`(일 버킷). 기본 `24h`.
 - 200: `{ buckets: { bucket: string, count: number, users: number }[], totalEvents: number, affectedUsers: number }`
-  - `buckets` — ISO datetime 문자열 정렬. `count`=버킷 내 이벤트 수, `users`=버킷 내 distinct `userContext->>'id'`(영향 사용자 시계열).
+  - `buckets` — ISO datetime 문자열 정렬. `count`=버킷 내 이벤트 수, `users`=버킷 내 distinct 영향 사용자 시계열(아래와 동일한 식별 키).
   - `totalEvents` — window 내 전체 이벤트 수.
-  - `affectedUsers` — window 내 distinct `userContext->>'id'`(= SDK `user.id`) 개수. `user.id` 없는 이벤트 제외, 이메일 등 fallback은 범위 외. **window 전체 합계라 버킷별 `users`의 단순 합과 다르다**(같은 사용자가 여러 버킷에 걸쳐도 합계에선 1회).
+  - `affectedUsers` — window 내 distinct 영향 사용자 개수. 식별 키는 `COALESCE(NULLIF(userContext->>'id',''), NULLIF(userContext->>'email',''), NULLIF(userContext->>'username',''))` — `user.id` 우선, 없거나 빈 문자열이면 `email`→`username` 폴백(셋 다 없으면 제외). **window 전체 합계라 버킷별 `users`의 단순 합과 다르다**(같은 사용자가 여러 버킷에 걸쳐도 합계에선 1회). **한계**: 같은 사람이 `id`와 `email`로 따로 식별되면 2명으로 집계(교차 식별자 해소 없음).
 - 소유권 미보유 시 404 (`getProject`와 동일 패턴).
 
 ## 프로젝트 키 (DSN)

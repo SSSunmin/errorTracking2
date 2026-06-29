@@ -2,6 +2,13 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (P3 통계 follow-up — affectedUsers 이메일/유저네임 폴백)
+- **코드(`modules/issues/service`·`modules/projects/service`)**: 영향 사용자 distinct 집계 키를 `user.id` 단독 → `COALESCE(NULLIF(id,''), NULLIF(email,''), NULLIF(username,''))`로 확장(4개 쿼리: issue/project × 버킷·window총합). `id` 없이 `email`/`username`만 가진 이벤트도 카운트(Sentry 식별 우선순위), `NULLIF`로 빈 문자열 id가 폴백을 막거나 유령 사용자로 뭉치는 것 방지. `COUNT(DISTINCT …)`가 NULL을 무시하므로 기존 `FILTER/WHERE … IS NOT NULL`은 제거(중복). 마이그레이션 없음.
+- **테스트(`tests/statsCharts`)**: 기존 "email-only 제외" 단언을 새 의미(카운트됨)로 갱신 + 폴백 전용 테스트 추가(id 우선·email/username 폴백·빈 문자열 id→email). 전체 210 green, typecheck clean.
+- **리뷰**: code-reviewer가 빈 문자열 id 엣지(🔴)를 지적 → `NULLIF` 보강으로 해소. SQL 인젝션 없음(COALESCE 키는 상수, projectId/since는 파라미터화).
+- **API 갱신(`api/issues-api`·`api/projects-api`)**: `affectedUsers`/`buckets[].users` 식별 키 설명을 폴백 식(id→email→username)으로 수정, 교차 식별자 미해소 한계 명시("이메일 등 fallback 범위 외" 문구 제거).
+- **백로그(`roadmap/backlog`)**: P3 통계 follow-up ③(이메일 fallback) 완료 기록.
+
 ## 2026-06-29 (DX — dev-up.ps1 견고화)
 - **스크립트(지식 외)** `scripts/dev-up.ps1`: `docker compose start`의 stderr가 스크립트 전역 `$ErrorActionPreference='Stop'` 하에서 종료성 `NativeCommandError`로 처리돼 39번째 줄에서 중단(→`up -d` 폴백 도달 못 함)되던 버그 수정. native(docker) 호출만 `ErrorActionPreference='Continue'`로 감싸 **종료코드로만 성공 판정**하는 `Invoke-Native { }` 헬퍼 도입(docker info/compose start/up 경유), `up -d`도 실패 시 명시적 throw로 Wait-For 타임아웃 대신 빠른 실패. 검증(PS 5.1): 옛 방식 중단 재현 + 새 헬퍼 exit code 반환·계속 진행, 실제 `compose start`/`info` exit 0.
 - **백로그(`roadmap/backlog`)**: "(소) DX"의 dev-up.ps1 견고화 완료 기록.

@@ -103,8 +103,8 @@ timestamp: 2026-06-23
 
 **응답 200:** `{ buckets: { bucket: string, count: number, users: number }[], affectedUsers: number }` (buckets는 ISO datetime 문자열 정렬)
 
-- `buckets[].users` — 버킷 내 distinct `userContext->>'id'`(영향 사용자 시계열).
-- `affectedUsers` — 해당 window 내 이 이슈 이벤트의 **distinct `userContext->>'id'`** 개수(= SDK `user.id`). `user.id`가 없는 이벤트는 제외하며, 이메일 등 fallback 식별자는 범위 외다. window 전체 합계 1개 숫자라 버킷별 `users`의 단순 합과 다르다(중복 사용자 1회).
+- `buckets[].users` — 버킷 내 distinct 영향 사용자 시계열(아래와 동일한 식별 키).
+- `affectedUsers` — 해당 window 내 이 이슈 이벤트의 **distinct 영향 사용자** 개수. 식별 키는 `COALESCE(NULLIF(userContext->>'id',''), NULLIF(userContext->>'email',''), NULLIF(userContext->>'username',''))` — `user.id` 우선, 없거나 빈 문자열이면 `email`→`username`으로 폴백(셋 다 없으면 제외). window 전체 합계 1개 숫자라 버킷별 `users`의 단순 합과 다르다(중복 사용자 1회). **한계**: 같은 사람이 한 번은 `id`로, 다른 한 번은 `email`로만 식별되면 2명으로 집계된다(교차 식별자 해소 없음).
 
 ### PATCH `/:id/issues/:issueId`
 이슈 상태 변경.
