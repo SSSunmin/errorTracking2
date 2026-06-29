@@ -12,11 +12,12 @@ timestamp: 2026-06-22
 로드맵의 핵심 단계는 완료됨([로드맵](/roadmap/roadmap.md)). 이 문서는 잔여 작업을 **중요도/위험도순**으로 정렬한다. 우선순위는 "운영에서 당장 문제가 되는가 / 보안 노출 전에 필요한가 / 정확도·기능"을 기준으로 한다.
 
 ## 권장 작업 순서 (요약)
-1. **P0 — 데이터 보존/정리(retention)**: 무한 증가 방지. 운영 시작 전 필수.
-2. **P1 — 리플레이 보안 하드닝(별도 오리진)**: 신뢰 못 할 녹화 노출 전 필요.
-3. **P2 — 소스맵 정확도/운영(full-path 매칭·삭제 API·메모리)**: 정확도·견고성.
-4. **P3 — 제품 기능 확장(검색/담당자/환경·릴리스/차트)**: 가치 추가, 비차단.
-5. **(소) DX·테스트**: 사이사이 처리 가능한 작은 항목.
+> 상태(2026-06-29): P0·P1·P2 핵심·P3 핵심 모두 **완료**. 잔여는 비차단 follow-up과 (소) DX뿐.
+1. ~~**P0 — 데이터 보존/정리(retention)**~~ → **완료**(PR #6·#7). 무한 증가 방지 잡 가동.
+2. ~~**P1 — 리플레이 보안 하드닝(별도 오리진)**~~ → **완료**(앱+배포 계층).
+3. **P2 — 소스맵 정확도/운영**: 정확도·삭제·메모리 **완료**. 오브젝트 스토리지 이전만 비차단 잔여.
+4. **P3 — 제품 기능 확장(검색/담당자/환경·릴리스/차트)**: 핵심 **완료**. `affectedUsers` 이메일 fallback만 잔여.
+5. **(소) DX·테스트**: `dev-up.ps1` 견고화 등 사이사이 처리 가능한 작은 항목.
 
 ---
 
@@ -33,7 +34,20 @@ timestamp: 2026-06-22
 
 **의존성**: 없음(독립). 가장 먼저 권장.
 
-### 확정 계획 (2026-06-22)
+### 완료 (2026-06-22, PR #6·#7, feat/retention)
+확정 계획(아래)의 구현 단계 1~7을 모두 코드로 반영·머지 완료. 리뷰 지적(W-1·2·3·5)도 PR #7에서 해소.
+- **env**(`config/env.ts`): `RETENTION_ENABLED`(zod v4 `z.stringbool()`)·`RETENTION_REPLAY_DAYS`(14)·`SNAPSHOT_DAYS`(14)·`EVENT_DAYS`(90)·`BATCH_SIZE`·`CRON`. 소스맵은 범위 제외(릴리스 산출물).
+- **인덱스 마이그레이션** `20260622063456_add_retention_indexes`: `EventReplay.createdAt`·`EventSnapshot.createdAt` 인덱스 추가(배치 삭제용).
+- **큐/스케줄러**(`lib/queue.ts`): `getRetentionQueue`/`closeRetentionQueue`/`scheduleRetentionJob`(`upsertJobScheduler`로 멱등 등록). 큐 lazy 싱글톤 패턴 유지.
+- **prune 배치 로직**(`modules/retention/prune.ts`): cutoff 계산 + LIMIT N 배치 삭제(배치 간 sleep, concurrency 1), 삭제 순서 `EventReplay`(독립 고아)→`EventSnapshot`→`Event`(snapshot cascade), 삭제량 `PruneResult` 반환. `RetentionPruneError`로 부분 진행 보존, `BatchDeleter` 주입으로 실패 경로 테스트.
+- **워커**(`worker.ts`): retention Worker 등록(concurrency 1)·부팅 시 스케줄·completed/failed 로깅·shutdown에 `closeRetentionQueue`.
+- **테스트** `tests/retention.test.ts`(8 green): cutoff 경계·disabled·대상별 차등·배치 경계·고아 replay 독립삭제·Event cascade.
+- **OKF**: [데이터 보존/정리](/ops/retention.md) 개념 문서 + [환경변수](/config/environment.md)·index·log 갱신.
+- **삭제 순서 정합성(2026-06-29 재확인)**: 이후 추가된 멤버십/담당자·코멘트/릴리스 회귀 마이그레이션 어느 것도 Event를 FK로 참조하지 않음(유일한 Event 참조는 `EventSnapshot.event` cascade). 삭제 순서 무영향.
+
+**남은 follow-up(비차단)**: 릴리스 단위 retention(오래된 릴리스 소스맵 자동 정리)을 P2 소스맵 삭제 API와 묶는 건 미착수 — 현재 retention은 replay/snapshot/event만 대상.
+
+### 확정 계획 (2026-06-22) — 구현됨(위 "완료" 참조)
 코드 근거(impl-planner) 검토 후 결정·착수.
 
 **확정 결정**:
