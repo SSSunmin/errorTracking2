@@ -2,6 +2,11 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (DX — 대시보드 컴포넌트 테스트 환경)
+- **테스트 인프라(지식 외)**: `vitest.config.ts`를 `server`/`ui` **projects 2개로 분리**. `server`(DB 의존 통합 테스트)만 `globalSetup`(테스트 DB 생성+마이그레이션)·`setupFiles`(per-file TRUNCATE)를 받고, `ui`(dashboard/sdk/examples 유닛)는 인프라 없이 실행. `fileParallelism: false`는 vitest 루트 전용 옵션이라 루트 유지(server는 단일 DB 공유→직렬 필수). 이로써 SDK/대시보드 테스트가 Postgres 없이 돌아감(증명: `TEST_DATABASE_URL` 미설정으로 `--project ui` 49 green).
+- **신규 테스트(지식 외)**: `packages/dashboard/src/components.test.tsx`(+7) — 순수 컴포넌트를 `react-dom/server` `renderToStaticMarkup`로 검증(새 라이브러리 도입 0). StatsChart 분기(빈 상태/hasUsers false·단일·다중 버킷 polyline≥2 조건), relativeTime 단위 경계, badges 한국어 레이블+클래스. 전체 209 green, typecheck·lint clean.
+- **백로그(`roadmap/backlog`)**: "(소) DX·테스트"의 "대시보드 컴포넌트 테스트 환경 부재"를 완료로 갱신, 남은 한계(ReplayPlayer 등 stateful 컴포넌트) 명시.
+
 ## 2026-06-29 (P3 통계 follow-up — 버킷별 영향 사용자 시계열)
 - **API 갱신(`api/projects-api`·`api/issues-api`)**: project/issue stats 응답의 `buckets[]`에 `users`(버킷별 distinct `userContext->>'id'`) 추가. window 총합 `affectedUsers`는 중복 제거 위해 별도 쿼리 유지(버킷별 합과 다름 명시).
 - **백로그(`roadmap/backlog`)**: P3 통계 follow-up ①(bucket별 사용자 시계열) 완료 기록. ②(`Event.receivedAt` 인덱스)는 **이미 존재**(`@@index([projectId, receivedAt])`)로 정정 — 2026-06-22 노트가 outdated였음.
