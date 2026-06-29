@@ -117,6 +117,7 @@ export interface IssueDetail extends IssueListItem {
 export interface StatBucket {
   bucket: string;
   count: number;
+  users: number;
 }
 
 export type AlertChannel = "email" | "slack";

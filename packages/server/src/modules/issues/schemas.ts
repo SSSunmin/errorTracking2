@@ -184,7 +184,9 @@ export const issueStatsResponseSchema = z.object({
   buckets: z.array(
     z.object({
       bucket: z.string(),
-      count: z.number().int()
+      count: z.number().int(),
+      // Distinct affected users in this bucket (userContext->>'id').
+      users: z.number().int()
     })
   ),
   // Distinct users affected within the window, counted by userContext->>'id'

@@ -39,10 +39,10 @@ timestamp: 2026-06-23
 프로젝트 **전체 이벤트**(모든 이슈 합산)에 대한 발생 빈도 버킷 통계. PostgreSQL `date_trunc` GROUP BY.
 
 - Query: `window` = `24h`(시간 버킷) | `7d`(일 버킷). 기본 `24h`.
-- 200: `{ buckets: { bucket: string, count: number }[], totalEvents: number, affectedUsers: number }`
-  - `buckets` — ISO datetime 문자열 정렬.
+- 200: `{ buckets: { bucket: string, count: number, users: number }[], totalEvents: number, affectedUsers: number }`
+  - `buckets` — ISO datetime 문자열 정렬. `count`=버킷 내 이벤트 수, `users`=버킷 내 distinct `userContext->>'id'`(영향 사용자 시계열).
   - `totalEvents` — window 내 전체 이벤트 수.
-  - `affectedUsers` — window 내 distinct `userContext->>'id'`(= SDK `user.id`) 개수. `user.id` 없는 이벤트 제외, 이메일 등 fallback은 범위 외.
+  - `affectedUsers` — window 내 distinct `userContext->>'id'`(= SDK `user.id`) 개수. `user.id` 없는 이벤트 제외, 이메일 등 fallback은 범위 외. **window 전체 합계라 버킷별 `users`의 단순 합과 다르다**(같은 사용자가 여러 버킷에 걸쳐도 합계에선 1회).
 - 소유권 미보유 시 404 (`getProject`와 동일 패턴).
 
 ## 프로젝트 키 (DSN)
