@@ -81,6 +81,21 @@ export const projectStatsResponseSchema = z.object({
   affectedUsers: z.number().int()
 });
 
+export const projectEnvironmentStatsResponseSchema = z.object({
+  // One row per distinct environment over the window, busiest first. The null
+  // row aggregates events the SDK sent without an environment tag.
+  environments: z.array(
+    z.object({
+      environment: z.string().nullable(),
+      events: z.number().int(),
+      // Distinct issues touched in this environment over the window.
+      issues: z.number().int(),
+      // Distinct affected users (id → email → username fallback key).
+      affectedUsers: z.number().int()
+    })
+  )
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),

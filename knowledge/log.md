@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (P3 — 프로젝트 환경별 집계 뷰)
+- **API 신설**: `GET /api/projects/:id/environments?window=24h|7d` → `{ environments: [{ environment: string|null, events, issues, affectedUsers }] }`. 이벤트를 `GROUP BY "environment"`로 롤업(환경별 이벤트 수·distinct 이슈·distinct 영향 사용자). null environment(태그 없음)는 한 행으로 합산. 정렬 `events DESC, "environment" ASC NULLS LAST`(결정적). 식별 키는 기존 stats와 동일한 `COALESCE(NULLIF(id,''),…email,…username)`. 소유권 미보유 404. 마이그레이션 없음(기존 `@@index([projectId, environment])` 활용).
+- **코드**: `modules/projects/{schemas,service,routes}.ts`(`projectEnvironmentStatsResponseSchema`·`getProjectEnvironmentStats`·라우트, window 스키마/`getOwnedProject` 재사용). raw SQL은 `${projectId}`/`${since}` 파라미터화(A03 안전), bigint→Number 변환.
+- **대시보드**: `IssuesPage`에 "환경별 분포" 카드(테이블, 환경명 클릭 시 기존 환경 필터 연동, null은 "(미지정)", isError 폴백). `api.getProjectEnvironments` + `EnvironmentStat` 타입.
+- **테스트(`tests/environmentStats.test.ts`, +4)**: 그룹화·정렬·null 행, 환경 간 중복 사용자 독립 카운트·user 없는 이벤트 제외, window 제외, 프로젝트 격리+비멤버 404. 전체 231 green, typecheck·lint·dashboard build clean.
+- **리뷰**: code-reviewer 별도 패스. 반영: IssuesPage `isError` 폴백(무한 Spinner 방지), `ORDER BY … NULLS LAST` 명시, 환경 간 중복 사용자 테스트 추가. (afterEach 정리 지적은 서버 프로젝트가 `setup.ts` beforeEach TRUNCATE로 전역 처리해 불요.)
+- **OKF**: [프로젝트 API](/api/projects-api.md) `GET /:id/environments` 절 + index 갱신.
+
 ## 2026-06-29 (품질 — 대시보드 API 클라이언트 테스트)
 - **테스트(`packages/dashboard/src/api.test.ts`, 신규 +10)**: 그동안 무테스트였던 `api.ts`의 `request()` 인증/복원력 로직을 커버. 401→`refresh()`→1회 재시도(`retry:false`로 무한루프 차단), `/api/auth/*` 경로·`retry:false`는 refresh 제외, 동시 401의 단일 갱신 coalescing(`refreshPromise ??=`), 에러 바디 파싱 폴백(JSON 실패→statusText/"ERROR"), 204→undefined, `getEventReplay` 404→null. `fetch`만 `vi.stubGlobal`로 목킹 → DOM/DB 불필요, 무DB `ui` 프로젝트에서 실행. 새 라이브러리 0.
 - **리뷰**: code-reviewer 별도 패스 — critical 없음. 지적 반영으로 단언 강화(refresh 실패 시 `code`/`message`까지 검증, coalescing에 총 fetch 횟수 상한 단언, 204 테스트는 `json()`이 호출되면 reject하도록 해 본문 미독해 회귀 차단). 가짜 커버리지 아님.

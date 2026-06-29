@@ -120,6 +120,14 @@ export interface StatBucket {
   users: number;
 }
 
+export interface EnvironmentStat {
+  // null aggregates events the SDK sent without an environment tag.
+  environment: string | null;
+  events: number;
+  issues: number;
+  affectedUsers: number;
+}
+
 export type AlertChannel = "email" | "slack";
 export type AlertCondition = "new_issue" | "regression" | "event_threshold";
 
@@ -363,6 +371,11 @@ export const api = {
     window: "24h" | "7d"
   ): Promise<{ buckets: StatBucket[]; totalEvents: number; affectedUsers: number }> =>
     request(`/api/projects/${projectId}/stats?window=${window}`),
+  getProjectEnvironments: (
+    projectId: string,
+    window: "24h" | "7d"
+  ): Promise<{ environments: EnvironmentStat[] }> =>
+    request(`/api/projects/${projectId}/environments?window=${window}`),
   getEventSnapshot: (
     projectId: string,
     issueId: string,
