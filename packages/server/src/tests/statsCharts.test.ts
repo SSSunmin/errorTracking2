@@ -130,12 +130,12 @@ afterEach(async () => {
 // ---------------------------------------------------------------------------
 
 describe("issue stats affectedUsers", () => {
-  test("counts distinct user.id; ignores null id, other issues, and out-of-window events", async () => {
+  test("counts distinct users by id with email fallback; ignores other issues and out-of-window events", async () => {
     const owner = await register("stats-affected@example.com");
     const { project } = await createProject(owner, "Affected Users");
 
-    // Issue A: three events from two distinct users (u1 twice, u2 once)
-    // plus one event with no user.id → affectedUsers should be 2.
+    // Issue A: u1 (twice — id wins over the email it also carries), u2, and an
+    // event identified only by email → 3 distinct users (u1, u2, anon@x.com).
     const a1 = await processEvent(
       project.id,
       makePayload({ message: "issue A", user: { id: "u1" } })
@@ -148,7 +148,7 @@ describe("issue stats affectedUsers", () => {
       project.id,
       makePayload({ message: "issue A", user: { id: "u2" } })
     );
-    // No user.id (email only) → excluded from the distinct id count.
+    // No user.id (email only) → counted via the email fallback.
     await processEvent(
       project.id,
       makePayload({ message: "issue A", user: { email: "anon@x.com" } })
@@ -163,7 +163,7 @@ describe("issue stats affectedUsers", () => {
     const aResponse = await getIssueStats(project.id, a1.issueId, owner);
     expect(aResponse.statusCode).toBe(200);
     const aStats = issueStatsResponseSchema.parse(aResponse.json<unknown>());
-    expect(aStats.affectedUsers).toBe(2);
+    expect(aStats.affectedUsers).toBe(3);
 
     // Move all of issue A's events outside the 24h window → affectedUsers 0.
     await prisma.event.updateMany({
@@ -211,9 +211,44 @@ describe("issue stats affectedUsers", () => {
     const response = await getIssueStats(project.id, a.issueId, owner);
     const stats = issueStatsResponseSchema.parse(response.json<unknown>());
     expect(stats.buckets).toHaveLength(1);
-    // Only issue A's 4 events / 2 distinct users — issue B's u9 excluded.
+    // Issue A's 4 events / 3 distinct users (u1, u2, no-id@x.com via fallback);
+    // issue B's u9 excluded.
     expect(stats.buckets[0]?.count).toBe(4);
-    expect(stats.buckets[0]?.users).toBe(2);
+    expect(stats.buckets[0]?.users).toBe(3);
+  });
+
+  test("falls back id → email → username, with id taking precedence", async () => {
+    const owner = await register("issue-fallback@example.com");
+    const { project } = await createProject(owner, "Fallback Keys");
+    // u1 appears with an id, then again with the same id plus an email: id wins,
+    // so both collapse to one user. A second event is identified only by email,
+    // a third only by username → 3 distinct users total.
+    const a = await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "u1", email: "u1@x.com" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { email: "only-email@x.com" } })
+    );
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { username: "only-username" } })
+    );
+    // Blank id must not block the fallback: this event counts as its email, not
+    // as a shared empty-string "user".
+    await processEvent(
+      project.id,
+      makePayload({ message: "issue A", user: { id: "", email: "blank-id@x.com" } })
+    );
+
+    const response = await getIssueStats(project.id, a.issueId, owner);
+    const stats = issueStatsResponseSchema.parse(response.json<unknown>());
+    expect(stats.affectedUsers).toBe(4);
   });
 
   test("returns 404 for an issue whose project the caller does not own", async () => {
@@ -239,7 +274,8 @@ describe("project stats endpoint", () => {
     const owner = await register("stats-project@example.com");
     const { project } = await createProject(owner, "Project Stats");
 
-    // Two distinct issues; users u1 (issue A) and u2 (issue B) + one null-id event.
+    // Two distinct issues; users u1 (issue A) and u2 (issue B) + one email-only
+    // event that counts via the fallback → 3 distinct users.
     await processEvent(
       project.id,
       makePayload({ message: "issue A", user: { id: "u1" } })
@@ -262,7 +298,7 @@ describe("project stats endpoint", () => {
     const stats = projectStatsResponseSchema.parse(response.json<unknown>());
 
     expect(stats.totalEvents).toBe(4);
-    expect(stats.affectedUsers).toBe(2);
+    expect(stats.affectedUsers).toBe(3);
     expect(stats.buckets.reduce((sum, b) => sum + b.count, 0)).toBe(4);
   });
 
@@ -296,7 +332,8 @@ describe("project stats endpoint", () => {
     const stats = projectStatsResponseSchema.parse(response.json<unknown>());
     expect(stats.buckets).toHaveLength(1);
     expect(stats.buckets[0]?.count).toBe(4);
-    expect(stats.buckets[0]?.users).toBe(2);
+    // u1, u2, and no-id@x.com (email fallback) → 3 distinct.
+    expect(stats.buckets[0]?.users).toBe(3);
   });
 
   test("aggregates users independently per bucket over 7d", async () => {
