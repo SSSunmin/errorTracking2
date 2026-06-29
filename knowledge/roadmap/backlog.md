@@ -15,7 +15,7 @@ timestamp: 2026-06-22
 > 상태(2026-06-29): P0·P1·P2 핵심·P3 핵심 모두 **완료**. 잔여는 비차단 follow-up과 (소) DX뿐.
 1. ~~**P0 — 데이터 보존/정리(retention)**~~ → **완료**(PR #6·#7). 무한 증가 방지 잡 가동.
 2. ~~**P1 — 리플레이 보안 하드닝(별도 오리진)**~~ → **완료**(앱+배포 계층).
-3. **P2 — 소스맵 정확도/운영**: 정확도·삭제·메모리 **완료**. 오브젝트 스토리지 이전만 비차단 잔여.
+3. **P2 — 소스맵 정확도/운영**: 정확도·삭제·메모리·릴리스 retention 연계 **완료**(2026-06-29 고아 소스맵 정리 통합). 오브젝트 스토리지 이전만 비차단 잔여(새 의존성 결정 필요).
 4. **P3 — 제품 기능 확장(검색/담당자/환경·릴리스/차트)**: **완료**(`affectedUsers` 이메일/유저네임 fallback까지 2026-06-29 반영).
 5. **(소) DX·테스트**: `dev-up.ps1` 견고화 등 사이사이 처리 가능한 작은 항목.
 
@@ -45,7 +45,7 @@ timestamp: 2026-06-22
 - **OKF**: [데이터 보존/정리](/ops/retention.md) 개념 문서 + [환경변수](/config/environment.md)·index·log 갱신.
 - **삭제 순서 정합성(2026-06-29 재확인)**: 이후 추가된 멤버십/담당자·코멘트/릴리스 회귀 마이그레이션 어느 것도 Event를 FK로 참조하지 않음(유일한 Event 참조는 `EventSnapshot.event` cascade). 삭제 순서 무영향.
 
-**남은 follow-up(비차단)**: 릴리스 단위 retention(오래된 릴리스 소스맵 자동 정리)을 P2 소스맵 삭제 API와 묶는 건 미착수 — 현재 retention은 replay/snapshot/event만 대상.
+**~~남은 follow-up(비차단)~~ → 완료(2026-06-29)**: 릴리스 단위 retention(오래된 릴리스 소스맵 자동 정리)을 P0 retention 잡에 통합. 시간 단독이 아니라 **고아 릴리스**(이벤트가 안 남은 `(projectId, release)`) + grace(`createdAt < cutoff`)인 `SourceMap`만 삭제 — 활성/신규-업로드 릴리스는 보호. `RETENTION_SOURCEMAP_DAYS`(기본 0=비활성, 옵트인) 신설, prune에 SourceMap 단계(이벤트 prune 다음 마지막)·`pruneOrphanSourceMaps` 추가, 마이그레이션 없음(기존 `Event(projectId,release)` 인덱스 재사용). 테스트 +7(고아 삭제/활성 보호/grace 보호/disabled/이벤트-prune 연쇄/배치/크로스프로젝트 격리), retention 15 green·전체 217. 상세: [데이터 보존/정리](/ops/retention.md) *고아 소스맵* 절.
 
 ### 확정 계획 (2026-06-22) — 구현됨(위 "완료" 참조)
 코드 근거(impl-planner) 검토 후 결정·착수.
@@ -108,10 +108,10 @@ timestamp: 2026-06-22
 - 테스트 +11(suffix 매칭 단위 4, delete 통합 5, 경로 정밀도 통합 1, 입력검증 1). 전체 149 green.
 
 ### 남은 follow-up (비차단)
-- **오브젝트 스토리지 이전**: 참조된 맵은 여전히 전부 메모리에 gunzip. 진짜 대용량은 S3류 외부 스토리지로 이전 여지.
-- **릴리스 단위 retention 연계**: 삭제 API를 P0 retention 잡과 묶어 오래된 릴리스 소스맵 자동 정리(현재는 수동 호출만).
+- **오브젝트 스토리지 이전**: 참조된 맵은 여전히 전부 메모리에 gunzip. 진짜 대용량은 S3류 외부 스토리지로 이전 여지. (새 의존성 결정 필요 — 미착수.)
+- ~~**릴리스 단위 retention 연계**~~ → **완료(2026-06-29)**: P0 retention 잡에 고아 소스맵 정리 단계 통합(`RETENTION_SOURCEMAP_DAYS`, 옵트인). 자세한 내용은 위 P0 follow-up 노트 / [데이터 보존/정리](/ops/retention.md).
 
-**의존성**: P0(retention) 정책과 일부 연계. 정확도/삭제/메모리는 완료.
+**의존성**: P0(retention) 정책과 연계 완료. 정확도/삭제/메모리/릴리스-retention 완료. 잔여는 오브젝트 스토리지 이전뿐.
 
 ---
 

@@ -8,6 +8,8 @@
  *  - batch boundary: more rows than batchSize are fully drained across batches
  *  - orphan EventReplay (no FK to Event) is pruned independently of its Event
  *  - Event prune cascades remaining EventSnapshot rows (FK onDelete: Cascade)
+ *  - orphan SourceMap (release with no events, past grace cutoff) is pruned,
+ *    while active-release and within-grace maps are kept
  *
  * DB setup follows replay.test.ts (real prisma + TEST_DATABASE_URL,
  * TRUNCATE handled by setup.ts beforeEach).
@@ -35,6 +37,7 @@ const cfg = (over: Partial<RetentionConfig>): RetentionConfig => ({
   replayDays: 0,
   snapshotDays: 0,
   eventDays: 0,
+  sourcemapDays: 0,
   batchSize: 1_000,
   ...over
 });
@@ -94,6 +97,34 @@ const createSnapshot = (
 ): Promise<unknown> =>
   prisma.eventSnapshot.create({
     data: { eventId, projectId, data: {}, createdAt }
+  });
+
+const createSourceMap = (
+  projectId: string,
+  release: string,
+  createdAt: Date,
+  filename = "app.js.map"
+): Promise<unknown> =>
+  prisma.sourceMap.create({
+    data: {
+      projectId,
+      release,
+      filename,
+      data: Buffer.from([0x01, 0x02, 0x03]),
+      sizeBytes: 3,
+      createdAt
+    }
+  });
+
+const createReleaseEvent = (
+  issueId: string,
+  projectId: string,
+  release: string,
+  receivedAt: Date
+): Promise<{ id: string }> =>
+  prisma.event.create({
+    data: { issueId, projectId, level: "error", release, timestamp: receivedAt, receivedAt },
+    select: { id: true }
   });
 
 // ── tests ───────────────────────────────────────────────────────────────────
@@ -198,6 +229,7 @@ describe("pruneRetention", () => {
     expect(err.table).toBe("EventReplay");
     expect(err.partial.replay).toBe(2);
     expect(err.partial.snapshot).toBe(0);
+    expect(err.partial.sourcemap).toBe(0);
   });
 
   test("Event prune cascades a remaining snapshot (FK onDelete: Cascade)", async () => {
@@ -212,5 +244,89 @@ describe("pruneRetention", () => {
     expect(result.snapshot).toBe(0); // not pruned directly…
     expect(await prisma.eventSnapshot.count()).toBe(0); // …removed via cascade
     expect(await prisma.event.count()).toBe(0);
+  });
+
+  test("orphan source map (no events for its release, past grace) is pruned", async () => {
+    const { projectId } = await seedProject();
+    await createSourceMap(projectId, "v-orphan", daysAgo(30));
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 14 }));
+
+    expect(result.sourcemap).toBe(1);
+    expect(await prisma.sourceMap.count()).toBe(0);
+  });
+
+  test("active release source map is kept while any event survives", async () => {
+    const { projectId, issueId } = await seedProject();
+    // Map is old, but an event for the same release still exists → not an orphan.
+    await createSourceMap(projectId, "v-active", daysAgo(30));
+    await createReleaseEvent(issueId, projectId, "v-active", daysAgo(1));
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 14 }));
+
+    expect(result.sourcemap).toBe(0);
+    expect(await prisma.sourceMap.count()).toBe(1);
+  });
+
+  test("within-grace orphan source map is kept (protects just-uploaded releases)", async () => {
+    const { projectId } = await seedProject();
+    // No events for the release, but uploaded recently → inside the grace window.
+    await createSourceMap(projectId, "v-fresh", daysAgo(5));
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 14 }));
+
+    expect(result.sourcemap).toBe(0);
+    expect(await prisma.sourceMap.count()).toBe(1);
+  });
+
+  test("sourcemapDays = 0 disables source-map pruning", async () => {
+    const { projectId } = await seedProject();
+    await createSourceMap(projectId, "v-ancient", daysAgo(100));
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 0 }));
+
+    expect(result.sourcemap).toBe(0);
+    expect(await prisma.sourceMap.count()).toBe(1);
+  });
+
+  test("event prune orphans a release in the same pass, then its source map is pruned", async () => {
+    const { projectId, issueId } = await seedProject();
+    // Event old enough to be pruned; map shares the release and is past grace.
+    await createReleaseEvent(issueId, projectId, "v-dead", daysAgo(100));
+    await createSourceMap(projectId, "v-dead", daysAgo(100));
+
+    const result = await pruneRetention(cfg({ eventDays: 90, sourcemapDays: 14 }));
+
+    expect(result.event).toBe(1);
+    expect(result.sourcemap).toBe(1); // event pruned first → release orphaned → map pruned
+    expect(await prisma.event.count()).toBe(0);
+    expect(await prisma.sourceMap.count()).toBe(0);
+  });
+
+  test("orphan check is scoped per project: same release name in another project is unaffected", async () => {
+    // Project A keeps a live event for "shared-rel"; project B has none.
+    const a = await seedProject();
+    const b = await seedProject();
+    await createReleaseEvent(a.issueId, a.projectId, "shared-rel", daysAgo(1));
+    await createSourceMap(a.projectId, "shared-rel", daysAgo(30));
+    await createSourceMap(b.projectId, "shared-rel", daysAgo(30));
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 14 }));
+
+    expect(result.sourcemap).toBe(1); // only project B's orphan
+    expect(await prisma.sourceMap.count({ where: { projectId: a.projectId } })).toBe(1);
+    expect(await prisma.sourceMap.count({ where: { projectId: b.projectId } })).toBe(0);
+  });
+
+  test("source-map batch drains more rows than batchSize across batches", async () => {
+    const { projectId } = await seedProject();
+    for (let i = 0; i < 5; i += 1) {
+      await createSourceMap(projectId, `v-batch-${String(i)}`, daysAgo(30), `app-${String(i)}.js.map`);
+    }
+
+    const result = await pruneRetention(cfg({ sourcemapDays: 14, batchSize: 2 }));
+
+    expect(result.sourcemap).toBe(5);
+    expect(await prisma.sourceMap.count()).toBe(0);
   });
 });
