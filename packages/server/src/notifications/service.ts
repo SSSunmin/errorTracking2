@@ -65,10 +65,13 @@ const getDedupeSince = (
     return null;
   }
 
+  // event_threshold honors an explicit cooldown when set, otherwise falls back to
+  // the measurement window (its historical behavior) so existing rules are
+  // unaffected. regression has no measurement window, so it uses a fixed default.
   const dedupeMinutes =
     condition === "regression"
       ? cooldownMinutes ?? DEFAULT_REGRESSION_COOLDOWN_MINUTES
-      : windowMinutes;
+      : cooldownMinutes ?? windowMinutes;
 
   if (dedupeMinutes === null) {
     return null;

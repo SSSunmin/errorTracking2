@@ -293,7 +293,7 @@ describe("alert rule API", () => {
     expect(patched.statusCode).toBe(400);
   });
 
-  test("stores cooldown only for regression rules", async () => {
+  test("stores cooldown for regression and event_threshold, but drops it for new_issue", async () => {
     const session = await register("alert-cooldown@example.com");
     const project = await createProjectViaApi(session);
 
@@ -315,6 +315,7 @@ describe("alert rule API", () => {
         .cooldownMinutes
     ).toBe(30);
 
+    // event_threshold now keeps an explicit cooldown (the re-alert window).
     const threshold = await app.inject({
       method: "POST",
       url: `/api/projects/${project.id}/alert-rules`,
@@ -332,6 +333,25 @@ describe("alert rule API", () => {
     expect(threshold.statusCode).toBe(201);
     expect(
       alertRuleResponseSchema.parse(threshold.json<unknown>()).alertRule
+        .cooldownMinutes
+    ).toBe(30);
+
+    // new_issue fires at most once per issue, so a cooldown is meaningless and dropped.
+    const newIssue = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        name: "New issue",
+        channel: "email",
+        target: "new@example.com",
+        condition: "new_issue",
+        cooldownMinutes: 30
+      }
+    });
+    expect(newIssue.statusCode).toBe(201);
+    expect(
+      alertRuleResponseSchema.parse(newIssue.json<unknown>()).alertRule
         .cooldownMinutes
     ).toBeNull();
   });
@@ -512,6 +532,51 @@ describe("alert evaluation and dispatch", () => {
     const third = await processEvent(projectId, makePayload("Threshold boom"));
     await dispatch(projectId, third, notifier);
     expect(notifier.sends).toHaveLength(1);
+  });
+
+  test("event_threshold re-alert is governed by the cooldown, not the window", async () => {
+    const projectId = await createProject();
+    // Cooldown (1m) is far shorter than the measurement window (60m): a re-alert
+    // must be allowed once the cooldown lapses, even though the window still covers
+    // the earlier events. Under the old window-based dedupe this would stay silent.
+    const rule = await prisma.alertRule.create({
+      data: {
+        projectId,
+        name: "Threshold cooldown",
+        channel: "slack",
+        target: "https://hooks.slack.com/services/test/cooldown",
+        condition: "event_threshold",
+        threshold: 2,
+        windowMinutes: 60,
+        cooldownMinutes: 1
+      }
+    });
+    const notifier = new MockNotifier();
+
+    const first = await processEvent(projectId, makePayload("Cooldown threshold"));
+    await dispatch(projectId, first, notifier);
+    expect(notifier.sends).toHaveLength(0); // 1 < threshold
+
+    const second = await processEvent(projectId, makePayload("Cooldown threshold"));
+    await dispatch(projectId, second, notifier);
+    expect(notifier.sends).toHaveLength(1); // crosses threshold → fires
+
+    // Still within the 1m cooldown → suppressed despite count staying ≥ threshold.
+    const third = await processEvent(projectId, makePayload("Cooldown threshold"));
+    await dispatch(projectId, third, notifier);
+    expect(notifier.sends).toHaveLength(1);
+
+    // Age the sent notification past the cooldown; the window (60m) still covers
+    // every event, so a re-fire here proves cooldown — not window — gates re-alerts.
+    // first/second share a fingerprint → same issue; use first.issueId to match
+    // the sibling regression-cooldown test.
+    await prisma.notification.updateMany({
+      where: { alertRuleId: rule.id, issueId: first.issueId },
+      data: { sentAt: new Date(Date.now() - 2 * 60 * 1_000) }
+    });
+    const fourth = await processEvent(projectId, makePayload("Cooldown threshold"));
+    await dispatch(projectId, fourth, notifier);
+    expect(notifier.sends).toHaveLength(2);
   });
 
   test("failed delivery records an audit row and does not throw", async () => {

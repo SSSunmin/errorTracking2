@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (알림 — event_threshold cooldown 정합성)
+- **문제**: `event_threshold` 규칙이 `cooldownMinutes` 필드를 무시했다(생성 시 서비스가 null로 strip + dispatcher가 dedup에 `windowMinutes`만 사용). 측정창과 재알림 주기를 분리할 수 없었다.
+- **백엔드**: `alert-rules/service.ts` `normalizeCooldownMinutes`가 이제 `regression`+`event_threshold` 둘 다 cooldown 저장(new_issue는 1회성이라 계속 null). `notifications/service.ts` `getDedupeSince`의 event_threshold dedup 윈도를 `cooldownMinutes ?? windowMinutes`로 변경 — **하위호환**(cooldown 미설정 규칙은 기존처럼 windowMinutes 폴백), 설정 시 측정창과 독립적 재알림 주기. regression/new_issue 경로 불변.
+- **대시보드**: `AlertsPage`에 event_threshold용 "쿨다운(분·선택)" 입력 노출(비우면 미전송→폴백), 조건 전환 시 cooldown 초기화(regression="60"/그 외=""), 목록에 event_threshold cooldown 표기.
+- **테스트(`tests/alerts`)**: "stores cooldown" 테스트를 regression+event_threshold 저장/new_issue null로 갱신, 평가 테스트 추가("re-alert is governed by the cooldown, not the window" — 구 window-dedup에선 실패·신 cooldown-dedup에선 통과하는 진짜 회귀 방어). 전체 232 green, typecheck·lint·build clean.
+- **리뷰**: code-reviewer 별도 패스 — critical/보안 없음. 반영: 조건 전환 시 cooldown 상태 초기화(이전엔 "60"이 event_threshold에 묵시 전송돼 "선택" 의도와 충돌), 테스트 issueId를 sibling 테스트와 통일. (PATCH로 cooldown 명시 제거 불가·windowMinutes null 방어는 기존 제한/스키마상 불가라 범위 외.)
+- **OKF**: [알림 API](/api/alerts-api.md) cooldown 동작 규칙(조건별 dedup 윈도) 갱신.
+
 ## 2026-06-29 (P0/P2 follow-up — 릴리스 단위 고아 소스맵 정리)
 - **코드(`config/env`·`modules/retention/prune`)**: P0 retention 잡에 `SourceMap` 정리 단계 추가. 시간 단독이 아니라 **고아 릴리스**(`(projectId, release)`에 `Event`가 하나도 안 남음) + **grace**(`createdAt < cutoff`)인 맵만 삭제 — 활성 릴리스(이벤트 잔존)·신규 업로드(grace 내) 맵은 보호. 원래 P0가 소스맵을 제외한 이유("업로드 시각 기준 삭제 시 활성 릴리스 심볼리케이션 손상")를 정확히 해소. `RETENTION_SOURCEMAP_DAYS`(기본 0=비활성, 옵트인) 신설. prune 순서 replay→snapshot→event→**sourcemap**(마지막: 이벤트 prune 후 고아 상태를 봄, 같은 패스에서 정리된 릴리스 맵까지 연쇄). `pruneOrphanSourceMaps`(주입 가능한 `OrphanSourceMapDeleter`)·`PruneResult.sourcemap` 추가. 마이그레이션 없음(기존 `Event(projectId, release)` 인덱스 재사용).
 - **테스트(`tests/retention`)**: +7(고아 삭제·활성 릴리스 보호·grace 보호·disabled·이벤트prune 연쇄·배치 드레인·크로스프로젝트 격리), `err.partial.sourcemap` 단언 추가. retention 15 green, 전체 217 green, typecheck·lint clean.
