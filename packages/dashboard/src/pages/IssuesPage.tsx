@@ -40,6 +40,10 @@ export const IssuesPage = (): ReactNode => {
     queryKey: ["projectStats", projectId, statsWindow],
     queryFn: () => api.getProjectStats(projectId, statsWindow)
   });
+  const projectEnvironments = useQuery({
+    queryKey: ["projectEnvironments", projectId, statsWindow],
+    queryFn: () => api.getProjectEnvironments(projectId, statsWindow)
+  });
   const issues = useQuery({
     queryKey: [
       "issues",
@@ -115,6 +119,59 @@ export const IssuesPage = (): ReactNode => {
               {projectStats.data.affectedUsers}명
             </p>
           </>
+        ) : (
+          <Spinner />
+        )}
+      </section>
+
+      <section className="card">
+        <div className="card-head">
+          <h3>환경별 분포</h3>
+          <span className="muted">최근 {statsWindow === "24h" ? "24시간" : "7일"}</span>
+        </div>
+        {projectEnvironments.data ? (
+          projectEnvironments.data.environments.length === 0 ? (
+            <p className="muted">이 기간에 이벤트가 없습니다.</p>
+          ) : (
+            <table className="issues">
+              <thead>
+                <tr>
+                  <th>환경</th>
+                  <th>이벤트</th>
+                  <th>이슈</th>
+                  <th>영향 사용자</th>
+                </tr>
+              </thead>
+              <tbody>
+                {projectEnvironments.data.environments.map((env) => (
+                  <tr key={env.environment ?? "__none__"}>
+                    <td>
+                      {env.environment === null ? (
+                        <span className="muted">(미지정)</span>
+                      ) : (
+                        // Reuse the existing environment filter so the breakdown
+                        // doubles as a quick way to drill into one environment.
+                        <button
+                          type="button"
+                          className="ghost"
+                          onClick={() => {
+                            setEnvironment(env.environment ?? "");
+                          }}
+                        >
+                          {env.environment}
+                        </button>
+                      )}
+                    </td>
+                    <td>{env.events}</td>
+                    <td>{env.issues}</td>
+                    <td>{env.affectedUsers}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )
+        ) : projectEnvironments.isError ? (
+          <p className="muted">환경별 분포를 불러오지 못했습니다.</p>
         ) : (
           <Spinner />
         )}

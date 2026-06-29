@@ -45,6 +45,17 @@ timestamp: 2026-06-23
   - `affectedUsers` — window 내 distinct 영향 사용자 개수. 식별 키는 `COALESCE(NULLIF(userContext->>'id',''), NULLIF(userContext->>'email',''), NULLIF(userContext->>'username',''))` — `user.id` 우선, 없거나 빈 문자열이면 `email`→`username` 폴백(셋 다 없으면 제외). **window 전체 합계라 버킷별 `users`의 단순 합과 다르다**(같은 사용자가 여러 버킷에 걸쳐도 합계에선 1회). **한계**: 같은 사람이 `id`와 `email`로 따로 식별되면 2명으로 집계(교차 식별자 해소 없음).
 - 소유권 미보유 시 404 (`getProject`와 동일 패턴).
 
+### GET /:id/environments — 환경별 집계
+프로젝트 이벤트를 **환경(`environment`) 단위로 롤업**한 개요. PostgreSQL `GROUP BY "environment"`.
+
+- Query: `window` = `24h` | `7d`. 기본 `24h`(`/stats`와 동일 스키마 재사용).
+- 200: `{ environments: { environment: string | null, events: number, issues: number, affectedUsers: number }[] }`
+  - 행 하나 = 한 환경. `events`=이벤트 수, `issues`=distinct `issueId` 수, `affectedUsers`=distinct 영향 사용자(`/stats`와 동일한 id→email→username 폴백 키).
+  - `environment: null` 행은 **환경 태그 없이 들어온 이벤트**를 합산(GROUP BY가 NULL을 한 그룹으로 묶음).
+  - 정렬: 이벤트 많은 순(`events DESC`), 동수면 환경명 `ASC`(null은 마지막)로 결정적.
+  - 마이그레이션 없음 — 기존 `@@index([projectId, environment])` 활용.
+- 소유권 미보유 시 404.
+
 ## 프로젝트 키 (DSN)
 
 키 변경(생성/회전/토글)은 **owner 역할 전용** — DSN은 SDK 인증정보. 목록 조회(GET)는 멤버 누구나.

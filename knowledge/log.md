@@ -10,6 +10,20 @@ OKF 번들의 변경 이력. 최신 항목이 위.
 - **리뷰**: code-reviewer 별도 패스 — critical/보안 없음. 반영: 조건 전환 시 cooldown 상태 초기화(이전엔 "60"이 event_threshold에 묵시 전송돼 "선택" 의도와 충돌), 테스트 issueId를 sibling 테스트와 통일. (PATCH로 cooldown 명시 제거 불가·windowMinutes null 방어는 기존 제한/스키마상 불가라 범위 외.)
 - **OKF**: [알림 API](/api/alerts-api.md) cooldown 동작 규칙(조건별 dedup 윈도) 갱신.
 
+## 2026-06-29 (P3 — 프로젝트 환경별 집계 뷰)
+- **API 신설**: `GET /api/projects/:id/environments?window=24h|7d` → `{ environments: [{ environment: string|null, events, issues, affectedUsers }] }`. 이벤트를 `GROUP BY "environment"`로 롤업(환경별 이벤트 수·distinct 이슈·distinct 영향 사용자). null environment(태그 없음)는 한 행으로 합산. 정렬 `events DESC, "environment" ASC NULLS LAST`(결정적). 식별 키는 기존 stats와 동일한 `COALESCE(NULLIF(id,''),…email,…username)`. 소유권 미보유 404. 마이그레이션 없음(기존 `@@index([projectId, environment])` 활용).
+- **코드**: `modules/projects/{schemas,service,routes}.ts`(`projectEnvironmentStatsResponseSchema`·`getProjectEnvironmentStats`·라우트, window 스키마/`getOwnedProject` 재사용). raw SQL은 `${projectId}`/`${since}` 파라미터화(A03 안전), bigint→Number 변환.
+- **대시보드**: `IssuesPage`에 "환경별 분포" 카드(테이블, 환경명 클릭 시 기존 환경 필터 연동, null은 "(미지정)", isError 폴백). `api.getProjectEnvironments` + `EnvironmentStat` 타입.
+- **테스트(`tests/environmentStats.test.ts`, +4)**: 그룹화·정렬·null 행, 환경 간 중복 사용자 독립 카운트·user 없는 이벤트 제외, window 제외, 프로젝트 격리+비멤버 404. 전체 231 green, typecheck·lint·dashboard build clean.
+- **리뷰**: code-reviewer 별도 패스. 반영: IssuesPage `isError` 폴백(무한 Spinner 방지), `ORDER BY … NULLS LAST` 명시, 환경 간 중복 사용자 테스트 추가. (afterEach 정리 지적은 서버 프로젝트가 `setup.ts` beforeEach TRUNCATE로 전역 처리해 불요.)
+- **OKF**: [프로젝트 API](/api/projects-api.md) `GET /:id/environments` 절 + index 갱신.
+
+## 2026-06-29 (품질 — 대시보드 API 클라이언트 테스트)
+- **테스트(`packages/dashboard/src/api.test.ts`, 신규 +10)**: 그동안 무테스트였던 `api.ts`의 `request()` 인증/복원력 로직을 커버. 401→`refresh()`→1회 재시도(`retry:false`로 무한루프 차단), `/api/auth/*` 경로·`retry:false`는 refresh 제외, 동시 401의 단일 갱신 coalescing(`refreshPromise ??=`), 에러 바디 파싱 폴백(JSON 실패→statusText/"ERROR"), 204→undefined, `getEventReplay` 404→null. `fetch`만 `vi.stubGlobal`로 목킹 → DOM/DB 불필요, 무DB `ui` 프로젝트에서 실행. 새 라이브러리 0.
+- **리뷰**: code-reviewer 별도 패스 — critical 없음. 지적 반영으로 단언 강화(refresh 실패 시 `code`/`message`까지 검증, coalescing에 총 fetch 횟수 상한 단언, 204 테스트는 `json()`이 호출되면 reject하도록 해 본문 미독해 회귀 차단). 가짜 커버리지 아님.
+- **검증**: typecheck·lint clean, 전체 227 green(+10).
+- **백로그**: "(소) DX·테스트"에 "대시보드 API 클라이언트 무테스트" 완료 기록. 남은 한계: ReplayPlayer 등 stateful 컴포넌트(rrweb/캔버스, jsdom 별도 작업).
+
 ## 2026-06-29 (P0/P2 follow-up — 릴리스 단위 고아 소스맵 정리)
 - **코드(`config/env`·`modules/retention/prune`)**: P0 retention 잡에 `SourceMap` 정리 단계 추가. 시간 단독이 아니라 **고아 릴리스**(`(projectId, release)`에 `Event`가 하나도 안 남음) + **grace**(`createdAt < cutoff`)인 맵만 삭제 — 활성 릴리스(이벤트 잔존)·신규 업로드(grace 내) 맵은 보호. 원래 P0가 소스맵을 제외한 이유("업로드 시각 기준 삭제 시 활성 릴리스 심볼리케이션 손상")를 정확히 해소. `RETENTION_SOURCEMAP_DAYS`(기본 0=비활성, 옵트인) 신설. prune 순서 replay→snapshot→event→**sourcemap**(마지막: 이벤트 prune 후 고아 상태를 봄, 같은 패스에서 정리된 릴리스 맵까지 연쇄). `pruneOrphanSourceMaps`(주입 가능한 `OrphanSourceMapDeleter`)·`PruneResult.sourcemap` 추가. 마이그레이션 없음(기존 `Event(projectId, release)` 인덱스 재사용).
 - **테스트(`tests/retention`)**: +7(고아 삭제·활성 릴리스 보호·grace 보호·disabled·이벤트prune 연쇄·배치 드레인·크로스프로젝트 격리), `err.partial.sourcemap` 단언 추가. retention 15 green, 전체 217 green, typecheck·lint clean.

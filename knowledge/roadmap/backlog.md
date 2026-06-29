@@ -165,6 +165,7 @@ timestamp: 2026-06-22
 ## (소) DX · 테스트 백로그
 - ~~**dev-up.ps1 견고화**~~ → **완료(2026-06-29)**: `docker compose start`의 stderr가 `$ErrorActionPreference='Stop'` 하에서 종료성 `NativeCommandError`로 둔갑해 39번째 줄에서 스크립트가 중단되던 문제(`up -d` 폴백 도달 못 함) 해결. native(docker) 호출만 `ErrorActionPreference='Continue'`로 감싸고 **종료코드로만 성공 판정**하는 `Invoke-Native` 헬퍼 도입(docker info/compose start/up 모두 경유), `up -d`마저 실패 시 명시적 throw. 검증: PS 5.1에서 옛 방식=중단 재현·새 헬퍼=exit code 반환·계속 진행, 실제 `compose start`/`info` exit 0 확인.
 - ~~**대시보드 컴포넌트 테스트 환경 부재**~~ → **완료(2026-06-29)**: 새 라이브러리(@testing-library 등) 도입 없이 기존 자산만으로 해결. vitest를 `server`(DB·globalSetup·직렬)/`ui`(무DB) **projects 2개로 분리** → UI/SDK 유닛 테스트가 Postgres 없이 실행 가능(`fileParallelism`은 루트 전용 옵션이라 루트에 유지). 순수 프레젠테이션 컴포넌트는 `react-dom/server`의 `renderToStaticMarkup`로 검증(`packages/dashboard/src/components.test.tsx`: StatsChart 분기·relativeTime 경계·badges, +7). **남은 한계**: `ReplayPlayer` 등 stateful/effectful 컴포넌트는 여전히 무테스트(jsdom 환경은 SDK처럼 `// @vitest-environment jsdom` 프라그마로 진입 가능하나 rrweb/캔버스 의존이라 별도 작업 필요).
+- ~~**대시보드 API 클라이언트 무테스트**~~ → **완료(2026-06-29)**: `packages/dashboard/src/api.ts`의 `request()` 인증/복원력 로직(401→refresh→1회 재시도, `/api/auth/*`·`retry:false` 가드, 동시 refresh coalescing, 에러 바디 폴백, 204, `getEventReplay` 404→null)을 `api.test.ts`로 커버(+10, fetch만 목킹, 무DB `ui` 프로젝트). 새 라이브러리 0. 전체 227 green.
 - **리플레이 no-Meta 폴백**: Meta가 전혀 없는 녹화는 `1280×720`으로 추정 스케일(데이터에 크기 없음). 구 SDK 번들 녹화에서 발생 — 신규 녹화는 실제 뷰포트 보존. 데이터 한계라 플레이어 단독 해결 불가.
 
 ## 관련 개념
