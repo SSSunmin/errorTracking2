@@ -35,7 +35,14 @@ export const AlertsPage = (): ReactNode => {
         target: target.trim(),
         condition,
         ...(condition === "event_threshold"
-          ? { threshold: Number(threshold), windowMinutes: Number(windowMinutes) }
+          ? {
+              threshold: Number(threshold),
+              windowMinutes: Number(windowMinutes),
+              // Optional for thresholds: blank means "reuse the measurement window".
+              ...(cooldownMinutes.trim() === ""
+                ? {}
+                : { cooldownMinutes: Number(cooldownMinutes) })
+            }
           : {}),
         ...(condition === "regression"
           ? { cooldownMinutes: Number(cooldownMinutes) }
@@ -122,7 +129,11 @@ export const AlertsPage = (): ReactNode => {
           <select
             value={condition}
             onChange={(e) => {
-              setCondition(e.target.value as AlertCondition);
+              const next = e.target.value as AlertCondition;
+              setCondition(next);
+              // regression wants a concrete default; event_threshold's cooldown is
+              // optional (blank → reuse the window) so it starts empty.
+              setCooldownMinutes(next === "regression" ? "60" : "");
             }}
           >
             <option value="new_issue">{conditionLabels.new_issue}</option>
@@ -156,13 +167,16 @@ export const AlertsPage = (): ReactNode => {
             </label>
           </>
         )}
-        {condition === "regression" && (
+        {(condition === "regression" || condition === "event_threshold") && (
           <label>
-            쿨다운(분)
+            쿨다운(분){condition === "event_threshold" ? " · 선택" : ""}
             <input
               type="number"
               min={1}
               value={cooldownMinutes}
+              placeholder={
+                condition === "event_threshold" ? "비우면 기간과 동일" : undefined
+              }
               onChange={(e) => {
                 setCooldownMinutes(e.target.value);
               }}
@@ -189,7 +203,10 @@ export const AlertsPage = (): ReactNode => {
                 {channelLabels[rule.channel]} → {rule.target} ·{" "}
                 {conditionLabels[rule.condition]}
                 {rule.condition === "event_threshold"
-                  ? ` (${String(rule.windowMinutes)}분 내 ${String(rule.threshold)}건)`
+                  ? ` (${String(rule.windowMinutes)}분 내 ${String(rule.threshold)}건` +
+                    (rule.cooldownMinutes === null
+                      ? ")"
+                      : ` · 쿨다운 ${String(rule.cooldownMinutes)}분)`)
                   : ""}
                 {rule.condition === "regression"
                   ? ` · 쿨다운 ${String(rule.cooldownMinutes ?? 60)}분`

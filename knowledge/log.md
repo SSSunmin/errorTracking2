@@ -2,6 +2,14 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (알림 — event_threshold cooldown 정합성)
+- **문제**: `event_threshold` 규칙이 `cooldownMinutes` 필드를 무시했다(생성 시 서비스가 null로 strip + dispatcher가 dedup에 `windowMinutes`만 사용). 측정창과 재알림 주기를 분리할 수 없었다.
+- **백엔드**: `alert-rules/service.ts` `normalizeCooldownMinutes`가 이제 `regression`+`event_threshold` 둘 다 cooldown 저장(new_issue는 1회성이라 계속 null). `notifications/service.ts` `getDedupeSince`의 event_threshold dedup 윈도를 `cooldownMinutes ?? windowMinutes`로 변경 — **하위호환**(cooldown 미설정 규칙은 기존처럼 windowMinutes 폴백), 설정 시 측정창과 독립적 재알림 주기. regression/new_issue 경로 불변.
+- **대시보드**: `AlertsPage`에 event_threshold용 "쿨다운(분·선택)" 입력 노출(비우면 미전송→폴백), 조건 전환 시 cooldown 초기화(regression="60"/그 외=""), 목록에 event_threshold cooldown 표기.
+- **테스트(`tests/alerts`)**: "stores cooldown" 테스트를 regression+event_threshold 저장/new_issue null로 갱신, 평가 테스트 추가("re-alert is governed by the cooldown, not the window" — 구 window-dedup에선 실패·신 cooldown-dedup에선 통과하는 진짜 회귀 방어). 전체 232 green, typecheck·lint·build clean.
+- **리뷰**: code-reviewer 별도 패스 — critical/보안 없음. 반영: 조건 전환 시 cooldown 상태 초기화(이전엔 "60"이 event_threshold에 묵시 전송돼 "선택" 의도와 충돌), 테스트 issueId를 sibling 테스트와 통일. (PATCH로 cooldown 명시 제거 불가·windowMinutes null 방어는 기존 제한/스키마상 불가라 범위 외.)
+- **OKF**: [알림 API](/api/alerts-api.md) cooldown 동작 규칙(조건별 dedup 윈도) 갱신.
+
 ## 2026-06-29 (P3 — 프로젝트 환경별 집계 뷰)
 - **API 신설**: `GET /api/projects/:id/environments?window=24h|7d` → `{ environments: [{ environment: string|null, events, issues, affectedUsers }] }`. 이벤트를 `GROUP BY "environment"`로 롤업(환경별 이벤트 수·distinct 이슈·distinct 영향 사용자). null environment(태그 없음)는 한 행으로 합산. 정렬 `events DESC, "environment" ASC NULLS LAST`(결정적). 식별 키는 기존 stats와 동일한 `COALESCE(NULLIF(id,''),…email,…username)`. 소유권 미보유 404. 마이그레이션 없음(기존 `@@index([projectId, environment])` 활용).
 - **코드**: `modules/projects/{schemas,service,routes}.ts`(`projectEnvironmentStatsResponseSchema`·`getProjectEnvironmentStats`·라우트, window 스키마/`getOwnedProject` 재사용). raw SQL은 `${projectId}`/`${since}` 파라미터화(A03 안전), bigint→Number 변환.

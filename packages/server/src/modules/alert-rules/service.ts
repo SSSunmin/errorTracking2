@@ -82,10 +82,17 @@ const normalizeThresholdFields = (
         windowMinutes: null
       };
 
+// Cooldown is the re-alert suppression window. It is meaningful for the two
+// conditions that can fire repeatedly for one issue — regression and
+// event_threshold — and dropped for new_issue (which fires at most once). When
+// omitted for event_threshold the dispatcher falls back to windowMinutes.
 const normalizeCooldownMinutes = (
   condition: AlertCondition,
   cooldownMinutes: number | undefined
-): number | null => (condition === "regression" ? cooldownMinutes ?? null : null);
+): number | null =>
+  condition === "regression" || condition === "event_threshold"
+    ? cooldownMinutes ?? null
+    : null;
 
 const parseMergedAlertRule = (
   rule: Pick<
