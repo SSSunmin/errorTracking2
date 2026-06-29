@@ -46,6 +46,11 @@ const envSchema = z.object({
   RETENTION_REPLAY_DAYS: z.coerce.number().int().min(0).default(14),
   RETENTION_SNAPSHOT_DAYS: z.coerce.number().int().min(0).default(14),
   RETENTION_EVENT_DAYS: z.coerce.number().int().min(0).default(90),
+  // 릴리스 단위 소스맵 정리(grace 기간, 일). 0이면 비활성(원래 P0 결정 유지).
+  // 시간 단독이 아니라 "이벤트가 하나도 안 남은 릴리스(고아)"의 소스맵만 삭제하고,
+  // createdAt < cutoff인 것만 대상으로 해 "업로드만 됐고 아직 이벤트 없는" 신규
+  // 릴리스 맵을 보호한다. 활성 릴리스는 이벤트가 남아 있어 자동으로 안 지워진다.
+  RETENTION_SOURCEMAP_DAYS: z.coerce.number().int().min(0).default(0),
   // Capped at 10k: batching exists to avoid table-wide locks on the large
   // BYTEA/JSONB tables, so an oversized batch would defeat the purpose.
   RETENTION_BATCH_SIZE: z.coerce.number().int().positive().max(10_000).default(1_000),

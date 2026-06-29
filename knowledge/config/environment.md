@@ -33,6 +33,7 @@ timestamp: 2026-06-16
 | `RETENTION_REPLAY_DAYS` | - | 기본 14, `0`=비활성 | `EventReplay` 보존기간(일) |
 | `RETENTION_SNAPSHOT_DAYS` | - | 기본 14, `0`=비활성 | `EventSnapshot` 보존기간(일) |
 | `RETENTION_EVENT_DAYS` | - | 기본 90, `0`=비활성 | `Event` 보존기간(일) |
+| `RETENTION_SOURCEMAP_DAYS` | - | 기본 0(비활성) | 고아 `SourceMap` grace 기간(일). 이벤트 없는 릴리스의 맵만 삭제 |
 | `RETENTION_BATCH_SIZE` | - | 기본 1000 | 정리 배치당 최대 삭제 행 수 |
 | `RETENTION_CRON` | - | 기본 `"0 3 * * *"` | 정리 잡 cron(매일 03:00) |
 

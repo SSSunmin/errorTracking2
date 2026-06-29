@@ -2,6 +2,12 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-29 (P0/P2 follow-up — 릴리스 단위 고아 소스맵 정리)
+- **코드(`config/env`·`modules/retention/prune`)**: P0 retention 잡에 `SourceMap` 정리 단계 추가. 시간 단독이 아니라 **고아 릴리스**(`(projectId, release)`에 `Event`가 하나도 안 남음) + **grace**(`createdAt < cutoff`)인 맵만 삭제 — 활성 릴리스(이벤트 잔존)·신규 업로드(grace 내) 맵은 보호. 원래 P0가 소스맵을 제외한 이유("업로드 시각 기준 삭제 시 활성 릴리스 심볼리케이션 손상")를 정확히 해소. `RETENTION_SOURCEMAP_DAYS`(기본 0=비활성, 옵트인) 신설. prune 순서 replay→snapshot→event→**sourcemap**(마지막: 이벤트 prune 후 고아 상태를 봄, 같은 패스에서 정리된 릴리스 맵까지 연쇄). `pruneOrphanSourceMaps`(주입 가능한 `OrphanSourceMapDeleter`)·`PruneResult.sourcemap` 추가. 마이그레이션 없음(기존 `Event(projectId, release)` 인덱스 재사용).
+- **테스트(`tests/retention`)**: +7(고아 삭제·활성 릴리스 보호·grace 보호·disabled·이벤트prune 연쇄·배치 드레인·크로스프로젝트 격리), `err.partial.sourcemap` 단언 추가. retention 15 green, 전체 217 green, typecheck·lint clean.
+- **리뷰**: code-reviewer 별도 패스 — critical/보안 없음. SQL 정합성(A03: NOT EXISTS·`projectId`+`release` 매칭, 파라미터 바인딩, 상수 식별자)·NULL release 처리·활성 릴리스 보호 모두 정상 확인. 지적 반영: `batchSize<=0` 무한루프 가드(신규+기존 `pruneTable`), 배치실패 테스트 `sourcemap` partial 검증, 크로스프로젝트 격리 테스트.
+- **OKF 갱신**: [데이터 보존/정리](/ops/retention.md)에 *고아 소스맵* 절·삭제 순서 4단계·env 표·인덱스 노트 추가, [환경설정](/config/environment.md) `RETENTION_SOURCEMAP_DAYS` 행, [백로그](/roadmap/backlog.md) P0·P2 follow-up 완료 기록.
+
 ## 2026-06-29 (P3 통계 follow-up — affectedUsers 이메일/유저네임 폴백)
 - **코드(`modules/issues/service`·`modules/projects/service`)**: 영향 사용자 distinct 집계 키를 `user.id` 단독 → `COALESCE(NULLIF(id,''), NULLIF(email,''), NULLIF(username,''))`로 확장(4개 쿼리: issue/project × 버킷·window총합). `id` 없이 `email`/`username`만 가진 이벤트도 카운트(Sentry 식별 우선순위), `NULLIF`로 빈 문자열 id가 폴백을 막거나 유령 사용자로 뭉치는 것 방지. `COUNT(DISTINCT …)`가 NULL을 무시하므로 기존 `FILTER/WHERE … IS NOT NULL`은 제거(중복). 마이그레이션 없음.
 - **테스트(`tests/statsCharts`)**: 기존 "email-only 제외" 단언을 새 의미(카운트됨)로 갱신 + 폴백 전용 테스트 추가(id 우선·email/username 폴백·빈 문자열 id→email). 전체 210 green, typecheck clean.
