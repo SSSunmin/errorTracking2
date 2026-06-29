@@ -150,7 +150,7 @@ timestamp: 2026-06-22
 
 ## (소) DX · 테스트 백로그
 - **dev-up.ps1 견고화**: docker `info` 오탐 + `docker compose` stderr를 종료성 에러로 처리해 중간에 멈춤(인프라는 보통 기동됨). docker 체크 분리 + stderr 비리다이렉트 + 구간 ErrorAction 완화. (메모: dev-up-docker-stderr-abort)
-- **대시보드 컴포넌트 테스트 환경 부재**: `ReplayPlayer` 등 UI 로직이 무테스트. @testing-library 등 도입 여부는 별도 결정(현재 새 라이브러리 임의 도입 금지 원칙).
+- ~~**대시보드 컴포넌트 테스트 환경 부재**~~ → **완료(2026-06-29)**: 새 라이브러리(@testing-library 등) 도입 없이 기존 자산만으로 해결. vitest를 `server`(DB·globalSetup·직렬)/`ui`(무DB) **projects 2개로 분리** → UI/SDK 유닛 테스트가 Postgres 없이 실행 가능(`fileParallelism`은 루트 전용 옵션이라 루트에 유지). 순수 프레젠테이션 컴포넌트는 `react-dom/server`의 `renderToStaticMarkup`로 검증(`packages/dashboard/src/components.test.tsx`: StatsChart 분기·relativeTime 경계·badges, +7). **남은 한계**: `ReplayPlayer` 등 stateful/effectful 컴포넌트는 여전히 무테스트(jsdom 환경은 SDK처럼 `// @vitest-environment jsdom` 프라그마로 진입 가능하나 rrweb/캔버스 의존이라 별도 작업 필요).
 - **리플레이 no-Meta 폴백**: Meta가 전혀 없는 녹화는 `1280×720`으로 추정 스케일(데이터에 크기 없음). 구 SDK 번들 녹화에서 발생 — 신규 녹화는 실제 뷰포트 보존. 데이터 한계라 플레이어 단독 해결 불가.
 
 ## 관련 개념
