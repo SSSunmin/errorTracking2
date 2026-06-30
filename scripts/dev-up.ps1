@@ -59,6 +59,16 @@ if ((Invoke-Native { docker compose start postgres redis 2>$null }) -ne 0) {
 Wait-For 'postgres' { (docker exec claude-codex-test2-postgres-1 pg_isready -U mini_sentry) -match 'accepting' } 60 | Out-Null
 Wait-For 'redis'    { (docker exec claude-codex-test2-redis-1 redis-cli ping) -match 'PONG' } 30 | Out-Null
 
+# 2.5) Apply pending migrations to the long-lived dev DB. Tests provision their own
+# freshly-migrated DB, so a migration that never reached this DB is invisible to them
+# and only surfaces at runtime as a missing-column 500. Mirrors prod's one-shot
+# `migrate` service. prisma writes diagnostics to stderr, so go through Invoke-Native
+# (judge by exit code, not stderr) like the docker calls above.
+Write-Host "applying DB migrations (prisma migrate deploy) ..." -ForegroundColor Cyan
+if ((Invoke-Native { npx prisma migrate deploy --schema packages/server/prisma/schema.prisma }) -ne 0) {
+    throw 'prisma migrate deploy 실패 — 위 출력 확인. 미적용 마이그레이션이 있으면 API가 스키마 드리프트로 500이 납니다.'
+}
+
 # 3) API server (gate the rest on /health)
 Start-Svc 'mini-sentry: API (4100)' 'npm run dev -w @mini-sentry/server'
 Wait-For 'API /health' { (Invoke-RestMethod -Uri 'http://localhost:4100/health' -TimeoutSec 2).status -eq 'ok' } 90 | Out-Null
