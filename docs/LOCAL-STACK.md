@@ -30,8 +30,9 @@
 1. **Docker 데몬** 확인 → 꺼져 있으면 Docker Desktop 실행 후 `docker info` 성공할 때까지 대기.
 2. **인프라**: `docker compose start postgres redis` → `pg_isready` + `redis-cli ping`(PONG) 확인.
    - 컨테이너가 삭제됐으면 `start` 대신 `npm run infra:up`.
-3. **API 서버** 기동 → `curl http://localhost:4100/health`가 `{"status":"ok"}` 줄 때까지 대기(앞 단계가 안 떠 있으면 Prisma 연결 실패).
-4. **워커 / 대시보드 / HTML 데모 / React 샘플**은 서로 독립이라 병렬 기동 가능.
+3. **DB 마이그레이션**: `prisma migrate deploy`로 dev DB에 미적용 마이그레이션을 적용. 장수 dev DB는 새 마이그레이션이 머지돼도 자동 반영 안 되므로(테스트는 자체 DB라 못 잡음 → 런타임에 "컬럼 없음" 500), 서버 기동 전에 맞춘다. 실패 시 즉시 중단.
+4. **API 서버** 기동 → `curl http://localhost:4100/health`가 `{"status":"ok"}` 줄 때까지 대기(앞 단계가 안 떠 있으면 Prisma 연결 실패).
+5. **워커 / 대시보드 / HTML 데모 / React 샘플**은 서로 독립이라 병렬 기동 가능.
 
 ## 정리(teardown)
 
