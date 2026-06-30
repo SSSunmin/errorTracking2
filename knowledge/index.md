@@ -24,6 +24,7 @@
 - [ERD](/database/erd.md) — 엔티티 관계도(Mermaid, SourceMap 포함)
 
 ### API
+- [프로젝트 랜딩 헬스 집계](/api/projects-api.md) — `GET /api/projects/overview?window=24h|7d`는 멤버 프로젝트별 이벤트 수, 열린 이슈 수, window 버킷, 전체 기간 마지막 이벤트 시각을 한 번에 제공한다.
 - [인증 API](/api/auth-api.md) — register / login / refresh / logout / me
 - [프로젝트 API](/api/projects-api.md) — 프로젝트·프로젝트 키 CRUD·멤버 관리(멤버십 기반 접근제어) + 프로젝트 단위 통계(stats·배포 환경별·브라우저/OS 분포)
 - [인제스트 API](/api/ingest-api.md) — POST /:projectId/store 이벤트 수집

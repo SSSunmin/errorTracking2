@@ -119,6 +119,7 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 .page { display: flex; flex-direction: column; gap: 1rem; }
 .page-head { display: flex; align-items: center; justify-content: space-between; }
 .page-head h2 { margin: 0; }
+.page-head .tabs { margin-bottom: 0; }
 
 .auth-shell {
   position: relative;
@@ -206,6 +207,41 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 .event-nav select { max-width: min(100%, 360px); padding: 0.3rem 0.5rem; }
 .event-nav-note { margin: 0.5rem 0 0; }
 .list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.project-health {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)) minmax(120px, 160px);
+  gap: 0.75rem;
+  align-items: center;
+  margin-top: 0.85rem;
+}
+.metric {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+.metric-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+.metric-value {
+  color: var(--text);
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+.sparkline-wrap {
+  min-height: 34px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+}
+.sparkline {
+  width: 100%;
+  max-width: 160px;
+  height: 34px;
+  overflow: visible;
+}
 
 .create-project { display: flex; flex-direction: column; gap: 0.4rem; }
 .create-project .form-error { margin: 0 0.1rem; }

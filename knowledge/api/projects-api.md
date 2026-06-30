@@ -4,7 +4,7 @@ title: 프로젝트 API
 description: 프로젝트와 프로젝트 키(DSN) CRUD + 프로젝트 단위 이벤트 통계(stats). 전 엔드포인트 인증 필요.
 resource: packages/server/src/modules/projects/routes.ts
 tags: [api, projects, keys, dsn, fastify, stats]
-timestamp: 2026-06-23
+timestamp: 2026-06-30
 ---
 
 # 프로젝트 API
@@ -25,6 +25,18 @@ timestamp: 2026-06-23
 
 ### GET /:id — 단건 조회
 - 200: `{ project: { id, name, slug, platform, createdAt, updatedAt } }`
+
+### GET /overview — 프로젝트 랜딩 헬스 집계
+프로젝트 목록 카드가 한 번의 API 호출로 각 프로젝트의 핵심 헬스 지표를 표시하기 위한 집계 endpoint. 정적 경로이므로 라우트 등록 순서는 `/:id`보다 앞선다.
+
+- Query: `window` = `24h`(시간 버킷) | `7d`(일 버킷). 기본 `24h`.
+- 접근: 현재 사용자가 멤버(`ProjectMember`)인 프로젝트만 포함. 멤버가 아닌 프로젝트는 응답 배열에 포함하지 않는다.
+- 200: `{ projects: [{ projectId, events, openIssues, lastEventAt, buckets }] }`
+  - `events`: 선택한 window 안의 총 `Event` 수.
+  - `openIssues`: `status = "unresolved"`인 이슈 수. `resolved`와 `ignored`는 제외.
+  - `lastEventAt`: 전체 기간 기준 `MAX(Event.receivedAt)` ISO 문자열. 이벤트가 없으면 `null`. window 밖 이벤트도 마지막 이벤트 시각에는 반영된다.
+  - `buckets`: window 안 이벤트를 PostgreSQL `date_trunc`로 묶은 `{ bucket: ISO string, count: number }[]`. `24h`는 `hour`, `7d`는 `day`.
+- 구현: 프로젝트 목록 조회 1회 + 이벤트 버킷 raw SQL 1회 + 마지막 이벤트 raw SQL 1회 + unresolved issue `groupBy` 1회로 프로젝트 수와 무관하게 고정 쿼리 수를 유지한다. raw SQL은 Prisma tagged template과 `Prisma.join(projectIds)`를 사용한다.
 
 ### PATCH /:id — 수정
 - 접근: **owner 역할 전용** (비owner 멤버 403)

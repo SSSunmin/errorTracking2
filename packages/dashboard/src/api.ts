@@ -42,6 +42,7 @@ export interface CreateProjectResponse {
 
 export type IssueLevel = "debug" | "info" | "warning" | "error" | "fatal";
 export type IssueStatus = "unresolved" | "resolved" | "ignored";
+export type StatsWindow = "24h" | "7d";
 
 export interface IssueAssignee {
   userId: string;
@@ -118,6 +119,19 @@ export interface StatBucket {
   bucket: string;
   count: number;
   users: number;
+}
+
+export interface ProjectOverviewBucket {
+  bucket: string;
+  count: number;
+}
+
+export interface ProjectOverview {
+  projectId: string;
+  events: number;
+  openIssues: number;
+  lastEventAt: string | null;
+  buckets: ProjectOverviewBucket[];
 }
 
 export interface EnvironmentStat {
@@ -299,6 +313,10 @@ export const api = {
     request(`/api/projects/${id}`, { method: "DELETE" }),
   listKeys: (projectId: string): Promise<{ keys: ProjectKey[] }> =>
     request(`/api/projects/${projectId}/keys`),
+  getProjectsOverview: (
+    window: StatsWindow
+  ): Promise<{ projects: ProjectOverview[] }> =>
+    request(`/api/projects/overview?window=${window}`),
 
   listMembers: (projectId: string): Promise<{ members: ProjectMember[] }> =>
     request(`/api/projects/${projectId}/members`),
@@ -378,22 +396,22 @@ export const api = {
   getStats: (
     projectId: string,
     issueId: string,
-    window: "24h" | "7d"
+    window: StatsWindow
   ): Promise<{ buckets: StatBucket[]; affectedUsers: number }> =>
     request(`/api/projects/${projectId}/issues/${issueId}/stats?window=${window}`),
   getProjectStats: (
     projectId: string,
-    window: "24h" | "7d"
+    window: StatsWindow
   ): Promise<{ buckets: StatBucket[]; totalEvents: number; affectedUsers: number }> =>
     request(`/api/projects/${projectId}/stats?window=${window}`),
   getProjectEnvironments: (
     projectId: string,
-    window: "24h" | "7d"
+    window: StatsWindow
   ): Promise<{ environments: EnvironmentStat[] }> =>
     request(`/api/projects/${projectId}/environments?window=${window}`),
   getProjectClients: (
     projectId: string,
-    window: "24h" | "7d"
+    window: StatsWindow
   ): Promise<{ browsers: ClientStat[]; os: ClientStat[] }> =>
     request(`/api/projects/${projectId}/clients?window=${window}`),
   getEventSnapshot: (

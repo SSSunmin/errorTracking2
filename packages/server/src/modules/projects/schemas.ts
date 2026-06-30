@@ -81,6 +81,23 @@ export const projectStatsResponseSchema = z.object({
   affectedUsers: z.number().int()
 });
 
+export const projectsOverviewResponseSchema = z.object({
+  projects: z.array(
+    z.object({
+      projectId: z.string(),
+      events: z.number().int(),
+      openIssues: z.number().int(),
+      lastEventAt: z.string().nullable(),
+      buckets: z.array(
+        z.object({
+          bucket: z.string(),
+          count: z.number().int()
+        })
+      )
+    })
+  )
+});
+
 export const projectEnvironmentStatsResponseSchema = z.object({
   // One row per distinct environment over the window, busiest first. The null
   // row aggregates events the SDK sent without an environment tag.
