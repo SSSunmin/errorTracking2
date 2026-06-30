@@ -1,4 +1,4 @@
-import type { AlertChannel } from "@prisma/client";
+import { Prisma, type AlertChannel } from "@prisma/client";
 import type { FastifyInstance } from "fastify";
 import { afterEach, beforeEach, describe, expect, test } from "vitest";
 import { z } from "zod/v4";
@@ -356,6 +356,71 @@ describe("alert rule API", () => {
     ).toBeNull();
   });
 
+  test("validates event_spike parameters and returns decimal multiplier as number", async () => {
+    const session = await register("alert-spike-crud@example.com");
+    const project = await createProjectViaApi(session);
+
+    const basePayload = {
+      name: "Spike",
+      channel: "email",
+      target: "spike@example.com",
+      condition: "event_spike",
+      windowMinutes: 10,
+      baselineMinutes: 70,
+      spikeMultiplier: 2.5,
+      minEvents: 5
+    };
+
+    const baselineTooShort = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        ...basePayload,
+        baselineMinutes: 10
+      }
+    });
+    expect(baselineTooShort.statusCode).toBe(400);
+
+    const badMultiplier = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        ...basePayload,
+        spikeMultiplier: 0.5
+      }
+    });
+    expect(badMultiplier.statusCode).toBe(400);
+
+    const missingRequired = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: {
+        ...basePayload,
+        minEvents: undefined
+      }
+    });
+    expect(missingRequired.statusCode).toBe(400);
+
+    const createdResponse = await app.inject({
+      method: "POST",
+      url: `/api/projects/${project.id}/alert-rules`,
+      headers: authHeaders(session),
+      payload: basePayload
+    });
+    expect(createdResponse.statusCode).toBe(201);
+    const created = alertRuleResponseSchema.parse(
+      createdResponse.json<unknown>()
+    ).alertRule;
+    expect(created.baselineMinutes).toBe(70);
+    expect(created.spikeMultiplier).toBe(2.5);
+    expect(created.minEvents).toBe(5);
+    expect(created.threshold).toBeNull();
+    expect(created.windowMinutes).toBe(10);
+  });
+
   test("enforces a per-project alert rule cap", async () => {
     const session = await register("alert-cap@example.com");
     const project = await createProjectViaApi(session);
@@ -577,6 +642,60 @@ describe("alert evaluation and dispatch", () => {
     const fourth = await processEvent(projectId, makePayload("Cooldown threshold"));
     await dispatch(projectId, fourth, notifier);
     expect(notifier.sends).toHaveLength(2);
+  });
+
+  test("event_spike fires per issue and cooldown suppresses immediate re-alerts", async () => {
+    const projectId = await createProject();
+    await prisma.alertRule.create({
+      data: {
+        projectId,
+        name: "Spike",
+        channel: "slack",
+        target: "https://hooks.slack.com/services/test/spike",
+        condition: "event_spike",
+        windowMinutes: 10,
+        baselineMinutes: 70,
+        spikeMultiplier: new Prisma.Decimal(2),
+        minEvents: 3,
+        cooldownMinutes: 1
+      }
+    });
+    const notifier = new MockNotifier();
+
+    let baselineIssueId = "";
+    for (let index = 0; index < 5; index += 1) {
+      const result = await processEvent(projectId, makePayload("Spike boom"));
+      baselineIssueId = result.issueId;
+    }
+
+    await prisma.event.updateMany({
+      where: { issueId: baselineIssueId },
+      data: {
+        receivedAt: new Date(Date.now() - 30 * 60 * 1_000)
+      }
+    });
+
+    const firstRecent = await processEvent(projectId, makePayload("Spike boom"));
+    await dispatch(projectId, firstRecent, notifier);
+    expect(notifier.sends).toHaveLength(0);
+
+    const secondRecent = await processEvent(projectId, makePayload("Spike boom"));
+    await dispatch(projectId, secondRecent, notifier);
+    expect(notifier.sends).toHaveLength(0);
+
+    const thirdRecent = await processEvent(projectId, makePayload("Spike boom"));
+    await dispatch(projectId, thirdRecent, notifier);
+    expect(notifier.sends).toHaveLength(1);
+
+    const immediateRepeat = await processEvent(projectId, makePayload("Spike boom"));
+    await dispatch(projectId, immediateRepeat, notifier);
+    expect(notifier.sends).toHaveLength(1);
+
+    const notifications = await prisma.notification.findMany({
+      where: { issueId: thirdRecent.issueId }
+    });
+    expect(notifications).toHaveLength(1);
+    expect(notifications[0]?.status).toBe("sent");
   });
 
   test("failed delivery records an audit row and does not throw", async () => {

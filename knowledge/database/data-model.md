@@ -84,10 +84,12 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 > `filename`은 업로드 시 `frameBasename()`이 추출한 basename 값이다(URL/경로/쿼리·해시 제거 후 basename). 스택 프레임의 filename basename과 매칭 키로 사용된다. `data`는 PostgreSQL `BYTEA`(Prisma Bytes). 업로드 시 서버가 비동기 gzip 압축해 저장. 조회 시 gunzip해 메모리에서 사용. 마이그레이션: `20260622000000_add_source_map`(모델·인덱스·Event.symbolicated 컬럼), `20260622000100_source_map_project_fk`(Project FK + Cascade).
 
 ### AlertRule — 알림 규칙
-`id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `cooldownMinutes?`(Int?, regression 전용) · `isActive`(기본 true) · `createdAt` · `updatedAt`
+`id` · `projectId` → Project(Cascade) · `name` · `channel`(AlertChannel) · `target` · `condition`(AlertCondition) · `threshold?` · `windowMinutes?` · `cooldownMinutes?` · `baselineMinutes?` · `spikeMultiplier?`(Decimal(5,2)) · `minEvents?` · `isActive`(기본 true) · `createdAt` · `updatedAt`
 인덱스: `@@index([projectId])`
 
-> `cooldownMinutes`: `condition=regression`일 때만 의미를 가지며, regression 알림의 중복 발송 억제(dedup) 윈도를 분 단위로 지정한다. 미지정 시 서버 기본값 60분 적용. `regression` 이외 조건에서는 서비스 레이어(`normalizeCooldownMinutes`)가 null로 강제 저장한다. 마이그레이션: `20260616045858_alert_rule_cooldown`.
+> `cooldownMinutes`: `condition=regression|event_threshold|event_spike`일 때 의미를 가진다. regression은 미지정 시 서버 기본값 60분, threshold/spike는 미지정 시 `windowMinutes`로 dedup 윈도를 폴백한다. `new_issue`에서는 서비스 레이어(`normalizeCooldownMinutes`)가 null로 강제 저장한다. 마이그레이션: `20260616045858_alert_rule_cooldown`.
+>
+> `event_spike`: 이슈별 급증 감지 조건. `windowMinutes`는 최근 구간, `baselineMinutes`는 최근 구간을 제외한 베이스라인 상한(`[now-baselineMinutes, now-windowMinutes)`), `spikeMultiplier`는 분당 율 비교 배수, `minEvents`는 최근 구간 최소 건수다. 마이그레이션: `20260630062634_alert_event_spike`.
 
 ### RefreshToken — 리프레시 토큰(회전/폐기 추적)
 `id` · `userId` → User(Cascade) · `tokenHash`(unique) · `expiresAt` · `revokedAt?` · `replacedByTokenHash?` · `createdAt`
@@ -102,7 +104,7 @@ PostgreSQL + Prisma. ID는 모두 `cuid()`. 출처: `packages/server/prisma/sche
 - `IssueLevel`: debug · info · warning · error · fatal
 - `IssueStatus`: unresolved · resolved · ignored
 - `AlertChannel`: email · slack
-- `AlertCondition`: new_issue · regression · event_threshold
+- `AlertCondition`: new_issue · regression · event_threshold · event_spike
 - `NotificationStatus`: pending · sent · failed
 - `ProjectRole`: owner · member
 

@@ -4,7 +4,8 @@ export const alertChannelSchema = z.enum(["email", "slack"]);
 export const alertConditionSchema = z.enum([
   "new_issue",
   "regression",
-  "event_threshold"
+  "event_threshold",
+  "event_spike"
 ]);
 
 export const alertRuleParamsSchema = z.object({
@@ -20,6 +21,9 @@ const baseAlertRuleInputSchema = z.object({
   threshold: z.number().int().positive().max(1_000).optional(),
   windowMinutes: z.number().int().positive().max(24 * 60).optional(),
   cooldownMinutes: z.number().int().positive().max(24 * 60).optional(),
+  baselineMinutes: z.number().int().positive().max(24 * 60).optional(),
+  spikeMultiplier: z.number().positive().min(1).max(100).optional(),
+  minEvents: z.number().int().positive().max(1_000).optional(),
   isActive: z.boolean().default(true)
 });
 
@@ -63,6 +67,49 @@ const validateAlertRuleShape = (
       message: "threshold and windowMinutes are required for event_threshold rules"
     });
   }
+
+  if (input.condition === "event_spike") {
+    // Flag each missing required field on its own path so the client knows
+    // exactly which input is absent (not a single catch-all error).
+    const requiredSpikeFields = [
+      "windowMinutes",
+      "baselineMinutes",
+      "spikeMultiplier",
+      "minEvents"
+    ] as const;
+    for (const field of requiredSpikeFields) {
+      if (input[field] === undefined) {
+        context.addIssue({
+          code: "custom",
+          path: [field],
+          message: `${field} is required for event_spike rules`
+        });
+      }
+    }
+
+    if (
+      input.windowMinutes !== undefined &&
+      input.baselineMinutes !== undefined &&
+      input.baselineMinutes <= input.windowMinutes
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["baselineMinutes"],
+        message: "baselineMinutes must be greater than windowMinutes"
+      });
+    }
+
+    if (
+      input.spikeMultiplier !== undefined &&
+      input.spikeMultiplier < 1
+    ) {
+      context.addIssue({
+        code: "custom",
+        path: ["spikeMultiplier"],
+        message: "spikeMultiplier must be greater than or equal to 1"
+      });
+    }
+  }
 };
 
 export const createAlertRuleSchema = baseAlertRuleInputSchema.superRefine(
@@ -89,6 +136,9 @@ export const alertRuleSchema = z.object({
   threshold: z.number().int().nullable(),
   windowMinutes: z.number().int().nullable(),
   cooldownMinutes: z.number().int().nullable(),
+  baselineMinutes: z.number().int().nullable(),
+  spikeMultiplier: z.number().nullable(),
+  minEvents: z.number().int().nullable(),
   isActive: z.boolean(),
   createdAt: z.string(),
   updatedAt: z.string()

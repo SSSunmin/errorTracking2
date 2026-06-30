@@ -30,5 +30,6 @@ export const channelLabels: Record<AlertChannel, string> = {
 export const conditionLabels: Record<AlertCondition, string> = {
   new_issue: "새 이슈",
   regression: "회귀",
-  event_threshold: "이벤트 임계치"
+  event_threshold: "이벤트 임계치",
+  event_spike: "급증 감지"
 };

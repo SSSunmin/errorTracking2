@@ -26,16 +26,20 @@ const toEvaluationRule = (rule: AlertRule): AlertEvaluationRule => ({
   id: rule.id,
   condition: rule.condition,
   threshold: rule.threshold,
-  windowMinutes: rule.windowMinutes
+  windowMinutes: rule.windowMinutes,
+  baselineMinutes: rule.baselineMinutes,
+  spikeMultiplier:
+    rule.spikeMultiplier === null ? null : Number(rule.spikeMultiplier),
+  minEvents: rule.minEvents
 });
 
 const getEventCountsByWindowMinutes = async (
   projectId: string,
   issueId: string,
-  windows: readonly number[]
+  windows: readonly number[],
+  now: number
 ): Promise<Map<number, number>> => {
   const counts = new Map<number, number>();
-  const now = Date.now();
 
   await Promise.all(
     windows.map(async (windowMinutes) => {
@@ -56,6 +60,42 @@ const getEventCountsByWindowMinutes = async (
   return counts;
 };
 
+const getSpikeBaselineCountsByWindow = async (
+  projectId: string,
+  issueId: string,
+  windows: readonly { windowMinutes: number; baselineMinutes: number }[],
+  now: number
+): Promise<Map<string, number>> => {
+  const counts = new Map<string, number>();
+  const uniqueWindows = [
+    ...new Map(
+      windows.map((window) => [
+        `${String(window.windowMinutes)}:${String(window.baselineMinutes)}`,
+        window
+      ])
+    ).values()
+  ];
+
+  await Promise.all(
+    uniqueWindows.map(async ({ windowMinutes, baselineMinutes }) => {
+      const count = await prisma.event.count({
+        where: {
+          projectId,
+          issueId,
+          receivedAt: {
+            gte: new Date(now - baselineMinutes * 60 * 1_000),
+            lt: new Date(now - windowMinutes * 60 * 1_000)
+          }
+        }
+      });
+
+      counts.set(`${String(windowMinutes)}:${String(baselineMinutes)}`, count);
+    })
+  );
+
+  return counts;
+};
+
 const getDedupeSince = (
   condition: AlertCondition,
   windowMinutes: number | null,
@@ -65,9 +105,9 @@ const getDedupeSince = (
     return null;
   }
 
-  // event_threshold honors an explicit cooldown when set, otherwise falls back to
-  // the measurement window (its historical behavior) so existing rules are
-  // unaffected. regression has no measurement window, so it uses a fixed default.
+  // Spike/threshold conditions honor an explicit cooldown when set, otherwise
+  // fall back to the measurement window. Regression has no measurement window,
+  // so it uses a fixed default.
   const dedupeMinutes =
     condition === "regression"
       ? cooldownMinutes ?? DEFAULT_REGRESSION_COOLDOWN_MINUTES
@@ -189,23 +229,65 @@ export const processAlertsForEvent = async (
     return;
   }
 
-  const thresholdWindows = [
+  const countWindows = [
     ...new Set(
       rules
-        .filter((rule) => rule.condition === "event_threshold")
+        .filter(
+          (rule) =>
+            rule.condition === "event_threshold" ||
+            rule.condition === "event_spike"
+        )
         .map((rule) => rule.windowMinutes)
         .filter((windowMinutes): windowMinutes is number => windowMinutes !== null)
     )
   ];
-  const eventCountsByWindowMinutes = await getEventCountsByWindowMinutes(
-    projectId,
-    result.issueId,
-    thresholdWindows
+  const spikeRules = rules.filter(
+    (
+      rule
+    ): rule is AlertRule & {
+      windowMinutes: number;
+      baselineMinutes: number;
+    } =>
+      rule.condition === "event_spike" &&
+      rule.windowMinutes !== null &&
+      rule.baselineMinutes !== null
+  );
+  const now = Date.now();
+  const [eventCountsByWindowMinutes, baselineCountsByWindow] =
+    await Promise.all([
+      getEventCountsByWindowMinutes(
+        projectId,
+        result.issueId,
+        countWindows,
+        now
+      ),
+      getSpikeBaselineCountsByWindow(
+        projectId,
+        result.issueId,
+        spikeRules.map((rule) => ({
+          windowMinutes: rule.windowMinutes,
+          baselineMinutes: rule.baselineMinutes
+        })),
+        now
+      )
+    ]);
+  const spikeCountsByRuleId = new Map(
+    spikeRules.map((rule) => [
+      rule.id,
+      {
+        recent: eventCountsByWindowMinutes.get(rule.windowMinutes) ?? 0,
+        baseline:
+          baselineCountsByWindow.get(
+            `${String(rule.windowMinutes)}:${String(rule.baselineMinutes)}`
+          ) ?? 0
+      }
+    ])
   );
   const issueState: AlertIssueState = {
     isNew: result.isNew,
     regressed: result.regressed,
-    eventCountsByWindowMinutes
+    eventCountsByWindowMinutes,
+    spikeCountsByRuleId
   };
   const evaluations = evaluateAlerts(rules.map(toEvaluationRule), issueState);
 

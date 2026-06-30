@@ -2,6 +2,13 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-30 (알림 — event_spike 이슈별 급증 감지)
+- **DB/스키마**: `AlertCondition.event_spike` 추가, `AlertRule`에 `baselineMinutes`, `spikeMultiplier Decimal(5,2)`, `minEvents` 추가. 마이그레이션: `20260630062634_alert_event_spike`.
+- **백엔드**: alert-rule zod/DTO/정규화에 spike 필드 반영, Decimal은 응답/evaluator 경계에서 number로 변환. `evaluateAlerts()`에 최근 구간과 최근 구간을 제외한 베이스라인(`[now-baselineMinutes, now-windowMinutes)`)의 분당 율 비교 판정식 추가.
+- **디스패치**: `event_threshold`와 동일한 이슈별 dedup/메시지 구조를 재사용. spike도 `cooldownMinutes ?? windowMinutes`로 재알림 억제하며, 최근 카운트와 베이스라인 카운트는 window 조합별로 병렬 집계.
+- **대시보드/문서**: 조건 라벨 `급증 감지`, 생성 폼/목록 요약/API 타입 추가. alerts API와 데이터 모델 문서에 입력 필드, 판정식, dedup 규칙 반영.
+- **테스트**: evaluator 순수 단위 테스트와 alerts 통합 테스트에 spike 발화, cooldown 억제, CRUD 검증을 추가.
+
 ## 2026-06-30 (클라이언트 분포 + 분포 카드 재설계)
 - **API 신설**: `GET /api/projects/:id/clients?window=` → `{ browsers, os }` (각 `{ name, events, issues, affectedUsers }` — `/environments`와 동일 3지표). 인제스트가 이미 `ua-parser-js`(`enrich.ts`)로 파싱해 저장한 `contexts.browser/os.name`을 SQL `GROUP BY`로 집계 → **이벤트 상세와 동일한 이름**, 읽기 시 재파싱·마이그레이션 없음. 이름 없으면 `"알 수 없음"`. `dimension`('browser'/'os')은 JSON 키로 파라미터 바인딩(A03 안전). 정렬 events DESC, name ASC.
 - **재설계(UI)**: "환경별 분포" 표가 헤더-숫자 정렬이 어긋나 가독성이 나빴음 → 재사용 컴포넌트 `DistributionTable`/`DistributionCard`(components.tsx)로 통일. 숫자 우측정렬·tabular-nums·이벤트 share 바·클릭 칩(환경은 필터 드릴인)·0값 muted. 문구 **"환경"→"배포 환경"**(배포 환경 태그임을 명확히). `IssuesPage`에 배포환경/브라우저/OS 3카드.

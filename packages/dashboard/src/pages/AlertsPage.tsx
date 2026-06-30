@@ -20,6 +20,9 @@ export const AlertsPage = (): ReactNode => {
   const [condition, setCondition] = useState<AlertCondition>("new_issue");
   const [threshold, setThreshold] = useState("5");
   const [windowMinutes, setWindowMinutes] = useState("60");
+  const [baselineMinutes, setBaselineMinutes] = useState("240");
+  const [spikeMultiplier, setSpikeMultiplier] = useState("2");
+  const [minEvents, setMinEvents] = useState("5");
   const [cooldownMinutes, setCooldownMinutes] = useState("60");
   const [error, setError] = useState<string | null>(null);
 
@@ -39,6 +42,17 @@ export const AlertsPage = (): ReactNode => {
               threshold: Number(threshold),
               windowMinutes: Number(windowMinutes),
               // Optional for thresholds: blank means "reuse the measurement window".
+              ...(cooldownMinutes.trim() === ""
+                ? {}
+                : { cooldownMinutes: Number(cooldownMinutes) })
+            }
+          : {}),
+        ...(condition === "event_spike"
+          ? {
+              windowMinutes: Number(windowMinutes),
+              baselineMinutes: Number(baselineMinutes),
+              spikeMultiplier: Number(spikeMultiplier),
+              minEvents: Number(minEvents),
               ...(cooldownMinutes.trim() === ""
                 ? {}
                 : { cooldownMinutes: Number(cooldownMinutes) })
@@ -131,14 +145,15 @@ export const AlertsPage = (): ReactNode => {
             onChange={(e) => {
               const next = e.target.value as AlertCondition;
               setCondition(next);
-              // regression wants a concrete default; event_threshold's cooldown is
-              // optional (blank → reuse the window) so it starts empty.
+              // regression wants a concrete default; event_threshold/event_spike
+              // cooldown is optional (blank → reuse the window) so it starts empty.
               setCooldownMinutes(next === "regression" ? "60" : "");
             }}
           >
             <option value="new_issue">{conditionLabels.new_issue}</option>
             <option value="regression">{conditionLabels.regression}</option>
             <option value="event_threshold">{conditionLabels.event_threshold}</option>
+            <option value="event_spike">{conditionLabels.event_spike}</option>
           </select>
         </label>
         {condition === "event_threshold" && (
@@ -167,15 +182,68 @@ export const AlertsPage = (): ReactNode => {
             </label>
           </>
         )}
-        {(condition === "regression" || condition === "event_threshold") && (
+        {condition === "event_spike" && (
+          <>
+            <label>
+              최근 구간(분)
+              <input
+                type="number"
+                min={1}
+                value={windowMinutes}
+                onChange={(e) => {
+                  setWindowMinutes(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              베이스라인(분)
+              <input
+                type="number"
+                min={1}
+                value={baselineMinutes}
+                onChange={(e) => {
+                  setBaselineMinutes(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              배수
+              <input
+                type="number"
+                min={1}
+                step="0.1"
+                value={spikeMultiplier}
+                onChange={(e) => {
+                  setSpikeMultiplier(e.target.value);
+                }}
+              />
+            </label>
+            <label>
+              최소 건수
+              <input
+                type="number"
+                min={1}
+                value={minEvents}
+                onChange={(e) => {
+                  setMinEvents(e.target.value);
+                }}
+              />
+            </label>
+          </>
+        )}
+        {(
+          condition === "regression" ||
+          condition === "event_threshold" ||
+          condition === "event_spike"
+        ) && (
           <label>
-            쿨다운(분){condition === "event_threshold" ? " · 선택" : ""}
+            쿨다운(분){condition === "regression" ? "" : " · 선택"}
             <input
               type="number"
               min={1}
               value={cooldownMinutes}
               placeholder={
-                condition === "event_threshold" ? "비우면 기간과 동일" : undefined
+                condition === "regression" ? undefined : "비우면 기간과 동일"
               }
               onChange={(e) => {
                 setCooldownMinutes(e.target.value);
@@ -204,6 +272,12 @@ export const AlertsPage = (): ReactNode => {
                 {conditionLabels[rule.condition]}
                 {rule.condition === "event_threshold"
                   ? ` (${String(rule.windowMinutes)}분 내 ${String(rule.threshold)}건` +
+                    (rule.cooldownMinutes === null
+                      ? ")"
+                      : ` · 쿨다운 ${String(rule.cooldownMinutes)}분)`)
+                  : ""}
+                {rule.condition === "event_spike"
+                  ? ` (최근 ${String(rule.windowMinutes)}분, 기준 ${String(rule.baselineMinutes)}분, ${String(rule.spikeMultiplier)}배, 최소 ${String(rule.minEvents)}건` +
                     (rule.cooldownMinutes === null
                       ? ")"
                       : ` · 쿨다운 ${String(rule.cooldownMinutes)}분)`)

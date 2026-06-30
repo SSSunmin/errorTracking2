@@ -137,7 +137,11 @@ export interface ClientStat {
 }
 
 export type AlertChannel = "email" | "slack";
-export type AlertCondition = "new_issue" | "regression" | "event_threshold";
+export type AlertCondition =
+  | "new_issue"
+  | "regression"
+  | "event_threshold"
+  | "event_spike";
 
 export interface AlertRule {
   id: string;
@@ -149,6 +153,9 @@ export interface AlertRule {
   threshold: number | null;
   windowMinutes: number | null;
   cooldownMinutes: number | null;
+  baselineMinutes: number | null;
+  spikeMultiplier: number | null;
+  minEvents: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -469,6 +476,9 @@ export const api = {
       threshold?: number;
       windowMinutes?: number;
       cooldownMinutes?: number;
+      baselineMinutes?: number;
+      spikeMultiplier?: number;
+      minEvents?: number;
     }
   ): Promise<{ alertRule: AlertRule }> =>
     request(`/api/projects/${projectId}/alert-rules`, { method: "POST", body: input }),
