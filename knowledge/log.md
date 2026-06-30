@@ -2,6 +2,12 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-30 (프로젝트 랜딩 헬스 강화)
+- **API**: `GET /api/projects/overview?window=24h|7d` 추가. 멤버 프로젝트만 대상으로 window 내 이벤트 수와 `date_trunc` 버킷, 전체 기간 `lastEventAt`, `status="unresolved"` 열린 이슈 수를 반환한다. 프로젝트 목록, 이벤트 버킷, 마지막 이벤트, 열린 이슈 집계를 고정 쿼리 수로 수행하며 raw SQL은 Prisma tagged template/`Prisma.join`을 사용한다.
+- **대시보드**: `ProjectsPage` 카드에 24h/7d 토글, 이벤트 수, 열린 이슈 수, 마지막 이벤트 상대시각, 컴팩트 SVG 스파크라인을 추가했다. per-project `IssuesPage` 통계/분포는 변경하지 않았다.
+- **테스트**: `projectsOverview.test.ts`로 empty membership, 프로젝트별 집계, window 밖 이벤트 제외와 lastEventAt 반영, 비멤버 프로젝트 제외, 7d 일 버킷을 검증한다. `components.test.tsx`에는 스파크라인 순수 렌더 테스트를 추가했다.
+- **OKF**: `api/projects-api.md`에 overview endpoint 계약을 추가하고 index에 랜딩 헬스 집계를 연결했다.
+
 ## 2026-06-30 (알림 — event_spike 이슈별 급증 감지)
 - **DB/스키마**: `AlertCondition.event_spike` 추가, `AlertRule`에 `baselineMinutes`, `spikeMultiplier Decimal(5,2)`, `minEvents` 추가. 마이그레이션: `20260630062634_alert_event_spike`.
 - **백엔드**: alert-rule zod/DTO/정규화에 spike 필드 반영, Decimal은 응답/evaluator 경계에서 number로 변환. `evaluateAlerts()`에 최근 구간과 최근 구간을 제외한 베이스라인(`[now-baselineMinutes, now-windowMinutes)`)의 분당 율 비교 판정식 추가.

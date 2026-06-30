@@ -37,6 +37,14 @@ interface ProjectKeyDto {
   dsn: string;
 }
 
+interface ProjectOverviewDto {
+  projectId: string;
+  events: number;
+  openIssues: number;
+  lastEventAt: string | null;
+  buckets: { bucket: string; count: number }[];
+}
+
 const defaultPlatform = "javascript-browser";
 const defaultKeyLabel = "Default DSN";
 const maxProjectCreateAttempts = 5;
@@ -271,6 +279,98 @@ export const getProject = async (
 ): Promise<{ project: ProjectDto }> => ({
   project: toProjectDto(await getOwnedProject(projectId, ownerId))
 });
+
+export const getProjectsOverview = async (
+  ownerId: string,
+  query: ProjectStatsQuery
+): Promise<{ projects: ProjectOverviewDto[] }> => {
+  const projects = await prisma.project.findMany({
+    where: { members: { some: { userId: ownerId } } },
+    select: { id: true },
+    orderBy: { createdAt: "desc" }
+  });
+
+  if (projects.length === 0) {
+    return { projects: [] };
+  }
+
+  const projectIds = projects.map((project) => project.id);
+  const now = new Date();
+  const windowMs =
+    query.window === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
+  const since = new Date(now.getTime() - windowMs);
+  const truncUnit = query.window === "24h" ? "hour" : "day";
+
+  const [eventRows, lastEventRows, issueRows] = await Promise.all([
+    prisma.$queryRaw<{ projectId: string; bucket: Date; count: bigint }[]>`
+      SELECT "projectId",
+        date_trunc(${truncUnit}, "receivedAt") AS bucket,
+        COUNT(*)::bigint AS count
+      FROM "Event"
+      WHERE "projectId" IN (${Prisma.join(projectIds)})
+        AND "receivedAt" >= ${since}
+      GROUP BY "projectId", bucket
+      ORDER BY bucket ASC
+    `,
+    prisma.$queryRaw<{ projectId: string; lastEventAt: Date | null }[]>`
+      SELECT "projectId", MAX("receivedAt") AS "lastEventAt"
+      FROM "Event"
+      WHERE "projectId" IN (${Prisma.join(projectIds)})
+      GROUP BY "projectId"
+    `,
+    prisma.issue.groupBy({
+      by: ["projectId"],
+      where: {
+        projectId: { in: projectIds },
+        status: "unresolved"
+      },
+      _count: { _all: true }
+    })
+  ]);
+
+  const eventsByProject = new Map<
+    string,
+    { events: number; buckets: { bucket: string; count: number }[] }
+  >();
+  for (const row of eventRows) {
+    const count = Number(row.count);
+    const current = eventsByProject.get(row.projectId) ?? {
+      events: 0,
+      buckets: []
+    };
+    current.events += count;
+    current.buckets.push({
+      bucket: row.bucket.toISOString(),
+      count
+    });
+    eventsByProject.set(row.projectId, current);
+  }
+
+  const lastEventByProject = new Map(
+    lastEventRows.map((row) => [
+      row.projectId,
+      // GROUP BY only yields rows for projects that have events, so MAX is
+      // non-null in practice; guard anyway since the type allows null.
+      row.lastEventAt ? row.lastEventAt.toISOString() : null
+    ])
+  );
+  const openIssuesByProject = new Map(
+    issueRows.map((row) => [row.projectId, row._count._all])
+  );
+
+  return {
+    projects: projects.map((project) => {
+      const eventSummary = eventsByProject.get(project.id);
+      return {
+        projectId: project.id,
+        events: eventSummary?.events ?? 0,
+        openIssues: openIssuesByProject.get(project.id) ?? 0,
+        lastEventAt: lastEventByProject.get(project.id) ?? null,
+        buckets: eventSummary?.buckets ?? []
+      };
+    })
+  };
+};
 
 export const getProjectStats = async (
   ownerId: string,

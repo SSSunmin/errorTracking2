@@ -11,6 +11,7 @@ import {
   relativeTime,
   type DistributionRow
 } from "./components";
+import { ProjectSparkline } from "./pages/ProjectsPage";
 
 // Dashboard components are pure presentational React (no state/effects), so we
 // render them to a static SVG/HTML string via react-dom/server — no jsdom, no
@@ -71,6 +72,29 @@ describe("StatsChart", () => {
     // The line must carry one point per bucket, not a truncated/duplicated set.
     const points = /points="([^"]+)"/.exec(html)?.[1]?.trim().split(" ") ?? [];
     expect(points).toHaveLength(3);
+  });
+});
+
+describe("ProjectSparkline", () => {
+  test("renders the compact empty state when there are no buckets", () => {
+    const html = renderToStaticMarkup(<ProjectSparkline buckets={[]} />);
+    expect(html).toContain("데이터 없음");
+    expect(html).not.toContain("<svg");
+  });
+
+  test("draws one marker per bucket and a trend line", () => {
+    const html = renderToStaticMarkup(
+      <ProjectSparkline
+        buckets={[
+          { bucket: "2026-06-29T00:00:00.000Z", count: 2 },
+          { bucket: "2026-06-29T01:00:00.000Z", count: 4 },
+          { bucket: "2026-06-29T02:00:00.000Z", count: 1 }
+        ]}
+      />
+    );
+    expect(countMatches(html, "polyline")).toBe(1);
+    expect(countMatches(html, "circle")).toBe(3);
+    expect(html).toContain("프로젝트 이벤트 추세");
   });
 });
 
