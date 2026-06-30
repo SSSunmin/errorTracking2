@@ -75,7 +75,7 @@ a.ghost {
 }
 a.ghost:hover { border-color: var(--accent); }
 
-input, select {
+input, select, textarea {
   font: inherit;
   background: var(--bg);
   color: var(--text);
@@ -83,7 +83,16 @@ input, select {
   border-radius: 8px;
   padding: 0.5rem 0.6rem;
 }
-input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+input:focus, select:focus, textarea:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+/* Multi-line fields (e.g. the comment box) fill their form and grow downward
+   only, so they never collide with controls beside them. */
+textarea {
+  width: 100%;
+  min-height: 88px;
+  box-sizing: border-box;
+  resize: vertical;
+  line-height: 1.5;
+}
 /* Dark mode: tell the browser to render native control chrome (the date input's
    calendar-picker icon, spin buttons) light so it's visible on the dark field. */
 .dark input[type="date"] { color-scheme: dark; }
@@ -302,6 +311,26 @@ button.env-chip:hover { border-color: var(--accent); color: var(--accent); }
 .crumbs { list-style: none; padding: 0; margin: 0; }
 .crumbs li { display: flex; gap: 0.75rem; padding: 0.25rem 0; border-bottom: 1px solid var(--border); }
 .crumbs .cat { color: var(--accent); min-width: 100px; }
+
+/* Comment thread: each comment is a soft card; the body wraps and preserves the
+   author's line breaks, and the delete button stays pinned to the right. */
+.comments { list-style: none; padding: 0; margin: 0 0 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.comments li {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.comments li > div { flex: 1; min-width: 0; }
+.comments li p { margin: 0.35rem 0 0; white-space: pre-wrap; word-break: break-word; }
+
+/* Comment composer: textarea on its own row, submit aligned to the right. */
+.comment-form { display: flex; flex-direction: column; gap: 0.6rem; align-items: stretch; }
+.comment-form button[type="submit"] { align-self: flex-end; }
 
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 0.25rem 1rem; margin: 0.5rem 0; }
 .kv dt { color: var(--muted); }
