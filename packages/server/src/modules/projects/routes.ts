@@ -16,6 +16,7 @@ import {
   createProjectKey,
   deleteProject,
   getProject,
+  getProjectClientStats,
   getProjectEnvironmentStats,
   getProjectStats,
   listProjectKeys,
@@ -36,6 +37,7 @@ import {
   memberResponseSchema,
   projectKeyParamsSchema,
   projectKeyResponseSchema,
+  projectClientStatsResponseSchema,
   projectEnvironmentStatsResponseSchema,
   projectParamsSchema,
   projectResponseSchema,
@@ -158,6 +160,21 @@ export const projectRoutes: FastifyPluginCallbackZod = (app, _options, done) => 
         request.params.id,
         request.query
       )
+  );
+
+  app.get(
+    "/:id/clients",
+    {
+      schema: {
+        params: projectParamsSchema,
+        querystring: projectStatsQuerySchema,
+        response: {
+          200: projectClientStatsResponseSchema
+        }
+      }
+    },
+    async (request) =>
+      getProjectClientStats(getUserId(request), request.params.id, request.query)
   );
 
   app.get(

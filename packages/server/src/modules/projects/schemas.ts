@@ -96,6 +96,20 @@ export const projectEnvironmentStatsResponseSchema = z.object({
   )
 });
 
+const clientStatSchema = z.object({
+  // Browser/OS family name, or "알 수 없음" for absent/unrecognized UAs.
+  name: z.string(),
+  events: z.number().int(),
+  issues: z.number().int(),
+  affectedUsers: z.number().int()
+});
+
+export const projectClientStatsResponseSchema = z.object({
+  // Distribution of the window's events by client, derived from User-Agent.
+  browsers: z.array(clientStatSchema),
+  os: z.array(clientStatSchema)
+});
+
 export const projectSchema = z.object({
   id: z.string(),
   name: z.string(),

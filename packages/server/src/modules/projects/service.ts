@@ -385,6 +385,70 @@ export const getProjectEnvironmentStats = async (
   };
 };
 
+interface ClientStat {
+  name: string;
+  events: number;
+  issues: number;
+  affectedUsers: number;
+}
+
+// Bucket for browser/OS names that weren't parsed (non-browser clients like
+// curl/node, or events ingested before UA enrichment / with no User-Agent).
+const UA_UNKNOWN = "알 수 없음";
+
+// One browser- or OS-name distribution over the window. We aggregate the names
+// the ingest pipeline already parsed from each request's User-Agent (ua-parser-js
+// → contexts.{browser,os}.name in enrich.ts), so the chart matches the event
+// detail exactly and needs no read-time re-parsing. Pure SQL GROUP BY → one row
+// per distinct name; NULL collapses into "알 수 없음". `dimension` is a literal
+// 'browser'|'os' bound as a parameter (the JSON key), never user input.
+const clientDistribution = (
+  projectId: string,
+  since: Date,
+  dimension: "browser" | "os"
+): Promise<{ name: string; events: bigint; issues: bigint; users: bigint }[]> =>
+  prisma.$queryRaw`
+    SELECT COALESCE("contexts"->${dimension}->>'name', ${UA_UNKNOWN}) AS name,
+      COUNT(*)::bigint AS events,
+      COUNT(DISTINCT "issueId")::bigint AS issues,
+      COUNT(DISTINCT COALESCE(NULLIF("userContext"->>'id', ''), NULLIF("userContext"->>'email', ''), NULLIF("userContext"->>'username', '')))::bigint AS users
+    FROM "Event"
+    WHERE "projectId" = ${projectId}
+      AND "receivedAt" >= ${since}
+    GROUP BY 1
+    ORDER BY events DESC, name ASC
+  `;
+
+const toClientStats = (
+  rows: { name: string; events: bigint; issues: bigint; users: bigint }[]
+): ClientStat[] =>
+  rows.map((row) => ({
+    name: row.name,
+    events: Number(row.events),
+    issues: Number(row.issues),
+    affectedUsers: Number(row.users)
+  }));
+
+export const getProjectClientStats = async (
+  ownerId: string,
+  projectId: string,
+  query: ProjectStatsQuery
+): Promise<{ browsers: ClientStat[]; os: ClientStat[] }> => {
+  await getOwnedProject(projectId, ownerId);
+
+  const now = new Date();
+  const windowMs =
+    query.window === "24h" ? 24 * 60 * 60 * 1_000 : 7 * 24 * 60 * 60 * 1_000;
+  const since = new Date(now.getTime() - windowMs);
+
+  const [browsers, os] = await Promise.all([
+    clientDistribution(projectId, since, "browser"),
+    clientDistribution(projectId, since, "os")
+  ]);
+
+  return { browsers: toClientStats(browsers), os: toClientStats(os) };
+};
+
 export const updateProject = async (
   ownerId: string,
   projectId: string,

@@ -2,8 +2,16 @@ import { useQuery } from "@tanstack/react-query";
 import { useState, type ReactNode } from "react";
 import { Link, useParams } from "react-router-dom";
 
-import { api, type IssueLevel, type IssueStatus } from "../api";
-import { LevelBadge, relativeTime, Spinner, StatsChart, StatusBadge } from "../components";
+import { api, type ClientStat, type IssueLevel, type IssueStatus } from "../api";
+import {
+  DistributionCard,
+  LevelBadge,
+  relativeTime,
+  Spinner,
+  StatsChart,
+  StatusBadge,
+  type DistributionRow
+} from "../components";
 import { levelLabels, statusLabels } from "../labels";
 
 // A date input gives the user's local YYYY-MM-DD; expand it to an inclusive
@@ -44,6 +52,10 @@ export const IssuesPage = (): ReactNode => {
     queryKey: ["projectEnvironments", projectId, statsWindow],
     queryFn: () => api.getProjectEnvironments(projectId, statsWindow)
   });
+  const projectClients = useQuery({
+    queryKey: ["projectClients", projectId, statsWindow],
+    queryFn: () => api.getProjectClients(projectId, statsWindow)
+  });
   const issues = useQuery({
     queryKey: [
       "issues",
@@ -69,6 +81,41 @@ export const IssuesPage = (): ReactNode => {
         sort
       })
   });
+
+  const windowLabel = statsWindow === "24h" ? "최근 24시간" : "최근 7일";
+
+  // Share bars scale to the busiest bucket within each distribution.
+  const environments = projectEnvironments.data?.environments ?? [];
+  const maxEnvEvents = Math.max(1, ...environments.map((e) => e.events));
+  const envRows: DistributionRow[] = environments.map((env) => ({
+    key: env.environment ?? "__none__",
+    label: env.environment ?? "(미지정)",
+    muted: env.environment === null,
+    // Clicking a named environment drives the existing filter (drill-in).
+    ...(env.environment === null
+      ? {}
+      : {
+          onSelect: () => {
+            setEnvironment(env.environment ?? "");
+          }
+        }),
+    values: [env.events, env.issues, env.affectedUsers],
+    share: Math.round((env.events / maxEnvEvents) * 100)
+  }));
+
+  const clientRows = (stats: ClientStat[]): DistributionRow[] => {
+    const maxEvents = Math.max(1, ...stats.map((s) => s.events));
+    return stats.map((s) => ({
+      key: s.name,
+      label: s.name,
+      values: [s.events, s.issues, s.affectedUsers],
+      share: Math.round((s.events / maxEvents) * 100)
+    }));
+  };
+  const browserRows = projectClients.data
+    ? clientRows(projectClients.data.browsers)
+    : null;
+  const osRows = projectClients.data ? clientRows(projectClients.data.os) : null;
 
   return (
     <div className="page">
@@ -124,58 +171,35 @@ export const IssuesPage = (): ReactNode => {
         )}
       </section>
 
-      <section className="card">
-        <div className="card-head">
-          <h3>환경별 분포</h3>
-          <span className="muted">최근 {statsWindow === "24h" ? "24시간" : "7일"}</span>
-        </div>
-        {projectEnvironments.data ? (
-          projectEnvironments.data.environments.length === 0 ? (
-            <p className="muted">이 기간에 이벤트가 없습니다.</p>
-          ) : (
-            <table className="issues">
-              <thead>
-                <tr>
-                  <th>환경</th>
-                  <th>이벤트</th>
-                  <th>이슈</th>
-                  <th>영향 사용자</th>
-                </tr>
-              </thead>
-              <tbody>
-                {projectEnvironments.data.environments.map((env) => (
-                  <tr key={env.environment ?? "__none__"}>
-                    <td>
-                      {env.environment === null ? (
-                        <span className="muted">(미지정)</span>
-                      ) : (
-                        // Reuse the existing environment filter so the breakdown
-                        // doubles as a quick way to drill into one environment.
-                        <button
-                          type="button"
-                          className="ghost"
-                          onClick={() => {
-                            setEnvironment(env.environment ?? "");
-                          }}
-                        >
-                          {env.environment}
-                        </button>
-                      )}
-                    </td>
-                    <td>{env.events}</td>
-                    <td>{env.issues}</td>
-                    <td>{env.affectedUsers}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )
-        ) : projectEnvironments.isError ? (
-          <p className="muted">환경별 분포를 불러오지 못했습니다.</p>
-        ) : (
-          <Spinner />
-        )}
-      </section>
+      <DistributionCard
+        title="배포 환경별 분포"
+        windowLabel={windowLabel}
+        labelHeader="배포 환경"
+        columns={["이벤트", "이슈", "영향 사용자"]}
+        rows={projectEnvironments.data ? envRows : null}
+        isError={projectEnvironments.isError}
+        emptyText="이 기간에 이벤트가 없습니다."
+      />
+
+      <DistributionCard
+        title="브라우저별 분포"
+        windowLabel={windowLabel}
+        labelHeader="브라우저"
+        columns={["이벤트", "이슈", "영향 사용자"]}
+        rows={browserRows}
+        isError={projectClients.isError}
+        emptyText="이 기간에 이벤트가 없습니다."
+      />
+
+      <DistributionCard
+        title="OS별 분포"
+        windowLabel={windowLabel}
+        labelHeader="OS"
+        columns={["이벤트", "이슈", "영향 사용자"]}
+        rows={osRows}
+        isError={projectClients.isError}
+        emptyText="이 기간에 이벤트가 없습니다."
+      />
 
       <div className="filters">
         <select
