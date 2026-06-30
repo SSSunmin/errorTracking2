@@ -23,6 +23,9 @@ interface AlertRuleDto {
   threshold: number | null;
   windowMinutes: number | null;
   cooldownMinutes: number | null;
+  baselineMinutes: number | null;
+  spikeMultiplier: number | null;
+  minEvents: number | null;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
@@ -38,6 +41,10 @@ const toAlertRuleDto = (rule: AlertRule): AlertRuleDto => ({
   threshold: rule.threshold,
   windowMinutes: rule.windowMinutes,
   cooldownMinutes: rule.cooldownMinutes,
+  baselineMinutes: rule.baselineMinutes,
+  spikeMultiplier:
+    rule.spikeMultiplier === null ? null : Number(rule.spikeMultiplier),
+  minEvents: rule.minEvents,
   isActive: rule.isActive,
   createdAt: rule.createdAt.toISOString(),
   updatedAt: rule.updatedAt.toISOString()
@@ -72,14 +79,37 @@ const normalizeThresholdFields = (
   threshold: number | undefined,
   windowMinutes: number | undefined
 ): { threshold: number | null; windowMinutes: number | null } =>
-  condition === "event_threshold"
+  condition === "event_threshold" || condition === "event_spike"
     ? {
-        threshold: threshold ?? null,
+        threshold: condition === "event_threshold" ? threshold ?? null : null,
         windowMinutes: windowMinutes ?? null
       }
     : {
         threshold: null,
         windowMinutes: null
+      };
+
+const normalizeSpikeFields = (
+  condition: AlertCondition,
+  baselineMinutes: number | undefined,
+  spikeMultiplier: number | undefined,
+  minEvents: number | undefined
+): {
+  baselineMinutes: number | null;
+  spikeMultiplier: Prisma.Decimal | null;
+  minEvents: number | null;
+} =>
+  condition === "event_spike"
+    ? {
+        baselineMinutes: baselineMinutes ?? null,
+        spikeMultiplier:
+          spikeMultiplier === undefined ? null : new Prisma.Decimal(spikeMultiplier),
+        minEvents: minEvents ?? null
+      }
+    : {
+        baselineMinutes: null,
+        spikeMultiplier: null,
+        minEvents: null
       };
 
 // Cooldown is the re-alert suppression window. It is meaningful for the two
@@ -90,7 +120,9 @@ const normalizeCooldownMinutes = (
   condition: AlertCondition,
   cooldownMinutes: number | undefined
 ): number | null =>
-  condition === "regression" || condition === "event_threshold"
+  condition === "regression" ||
+  condition === "event_threshold" ||
+  condition === "event_spike"
     ? cooldownMinutes ?? null
     : null;
 
@@ -104,6 +136,9 @@ const parseMergedAlertRule = (
     | "threshold"
     | "windowMinutes"
     | "cooldownMinutes"
+    | "baselineMinutes"
+    | "spikeMultiplier"
+    | "minEvents"
     | "isActive"
   >
 ): {
@@ -114,13 +149,20 @@ const parseMergedAlertRule = (
   threshold: number | null;
   windowMinutes: number | null;
   cooldownMinutes: number | null;
+  baselineMinutes: number | null;
+  spikeMultiplier: Prisma.Decimal | null;
+  minEvents: number | null;
   isActive: boolean;
 } => {
   const parsed = mergedAlertRuleSchema.safeParse({
     ...rule,
     threshold: rule.threshold ?? undefined,
     windowMinutes: rule.windowMinutes ?? undefined,
-    cooldownMinutes: rule.cooldownMinutes ?? undefined
+    cooldownMinutes: rule.cooldownMinutes ?? undefined,
+    baselineMinutes: rule.baselineMinutes ?? undefined,
+    spikeMultiplier:
+      rule.spikeMultiplier === null ? undefined : Number(rule.spikeMultiplier),
+    minEvents: rule.minEvents ?? undefined
   });
 
   if (!parsed.success) {
@@ -140,6 +182,12 @@ const parseMergedAlertRule = (
     cooldownMinutes: normalizeCooldownMinutes(
       parsed.data.condition as AlertCondition,
       parsed.data.cooldownMinutes
+    ),
+    ...normalizeSpikeFields(
+      parsed.data.condition as AlertCondition,
+      parsed.data.baselineMinutes,
+      parsed.data.spikeMultiplier,
+      parsed.data.minEvents
     ),
     isActive: parsed.data.isActive
   };
@@ -183,6 +231,12 @@ export const createAlertRule = async (
     threshold: input.threshold ?? null,
     windowMinutes: input.windowMinutes ?? null,
     cooldownMinutes: input.cooldownMinutes ?? null,
+    baselineMinutes: input.baselineMinutes ?? null,
+    spikeMultiplier:
+      input.spikeMultiplier === undefined
+        ? null
+        : new Prisma.Decimal(input.spikeMultiplier),
+    minEvents: input.minEvents ?? null,
     isActive: input.isActive
   });
 
@@ -196,6 +250,9 @@ export const createAlertRule = async (
         threshold: parsed.threshold,
         windowMinutes: parsed.windowMinutes,
         cooldownMinutes: parsed.cooldownMinutes,
+        baselineMinutes: parsed.baselineMinutes,
+        spikeMultiplier: parsed.spikeMultiplier,
+        minEvents: parsed.minEvents,
         isActive: parsed.isActive,
         // Membership already verified by ensureOwnedProject above.
         project: {
@@ -268,6 +325,12 @@ export const updateAlertRule = async (
         threshold: input.threshold ?? existing.threshold,
         windowMinutes: input.windowMinutes ?? existing.windowMinutes,
         cooldownMinutes: input.cooldownMinutes ?? existing.cooldownMinutes,
+        baselineMinutes: input.baselineMinutes ?? existing.baselineMinutes,
+        spikeMultiplier:
+          input.spikeMultiplier === undefined
+            ? existing.spikeMultiplier
+            : new Prisma.Decimal(input.spikeMultiplier),
+        minEvents: input.minEvents ?? existing.minEvents,
         isActive: input.isActive ?? existing.isActive
       });
 

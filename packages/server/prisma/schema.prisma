@@ -30,6 +30,7 @@ enum AlertCondition {
   new_issue
   regression
   event_threshold
+  event_spike
 }
 
 enum NotificationStatus {
@@ -234,6 +235,9 @@ model AlertRule {
   threshold     Int?
   windowMinutes Int?
   cooldownMinutes Int?
+  baselineMinutes Int?
+  spikeMultiplier Decimal? @db.Decimal(5,2)
+  minEvents     Int?
   isActive      Boolean        @default(true)
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
