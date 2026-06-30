@@ -214,6 +214,59 @@ main { max-width: 920px; margin: 0 auto; padding: 1.5rem; }
 table.issues { width: 100%; border-collapse: collapse; }
 table.issues td { padding: 0.65rem 0.5rem; border-bottom: 1px solid var(--border); vertical-align: top; }
 
+/* Environment breakdown: metric columns right-aligned so each number sits under
+   its header, with an event-share bar so the busiest environment stands out. */
+table.env-stats { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+table.env-stats th {
+  text-align: right;
+  white-space: nowrap;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  padding: 0 0.75rem 0.55rem;
+  border-bottom: 1px solid var(--border);
+}
+table.env-stats th.env-col { text-align: left; }
+table.env-stats th:not(.env-col), table.env-stats td.num { min-width: 92px; }
+table.env-stats td {
+  text-align: right;
+  padding: 0.55rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+table.env-stats td.env-col { text-align: left; width: 99%; }
+table.env-stats tr:last-child td { border-bottom: none; }
+table.env-stats .num-val { font-weight: 600; color: var(--text); }
+table.env-stats .num-zero { color: var(--muted); font-weight: 500; }
+
+/* Clickable environment pill; doubles as the drill-in filter trigger. */
+.env-chip {
+  display: inline-block;
+  padding: 0.2rem 0.65rem;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: default;
+  transition: border-color 0.15s, color 0.15s;
+}
+/* Only the clickable (button) chips get the pointer + hover affordance. */
+button.env-chip { cursor: pointer; }
+button.env-chip:hover { border-color: var(--accent); color: var(--accent); }
+.env-chip.none { background: transparent; color: var(--muted); border-style: dashed; }
+
+.env-bar {
+  display: block;
+  width: 100%;
+  height: 4px;
+  margin-top: 0.3rem;
+  border-radius: 999px;
+  background: var(--panel-2);
+  overflow: hidden;
+}
+.env-bar > span { display: block; height: 100%; min-width: 2px; background: var(--accent); border-radius: 999px; }
+
 .badge {
   display: inline-block;
   padding: 0.1rem 0.5rem;

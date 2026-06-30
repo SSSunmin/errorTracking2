@@ -2,7 +2,15 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
 import type { StatBucket } from "./api";
-import { LevelBadge, StatsChart, StatusBadge, relativeTime } from "./components";
+import {
+  DistributionCard,
+  DistributionTable,
+  LevelBadge,
+  StatsChart,
+  StatusBadge,
+  relativeTime,
+  type DistributionRow
+} from "./components";
 
 // Dashboard components are pure presentational React (no state/effects), so we
 // render them to a static SVG/HTML string via react-dom/server — no jsdom, no
@@ -76,6 +84,80 @@ describe("relativeTime", () => {
     expect(ago(5 * 60_000)).toBe("5분 전");
     expect(ago(2 * 3_600_000)).toBe("2시간 전");
     expect(ago(3 * 86_400_000)).toBe("3일 전");
+  });
+});
+
+describe("DistributionTable", () => {
+  const rows: DistributionRow[] = [
+    { key: "prod", label: "production", onSelect: () => undefined, values: [10, 2, 5], share: 100 },
+    { key: "__none__", label: "(미지정)", muted: true, values: [3, 0, 0], share: 30 }
+  ];
+
+  test("renders the label header and metric columns", () => {
+    const html = renderToStaticMarkup(
+      <DistributionTable labelHeader="배포 환경" columns={["이벤트", "이슈", "영향 사용자"]} rows={rows} />
+    );
+    expect(html).toContain("배포 환경");
+    expect(html).toContain("이벤트");
+    expect(html).toContain("영향 사용자");
+  });
+
+  test("only the onSelect row is a clickable chip; muted rows are dashed spans", () => {
+    const html = renderToStaticMarkup(
+      <DistributionTable labelHeader="배포 환경" columns={["이벤트", "이슈", "영향 사용자"]} rows={rows} />
+    );
+    // Exactly one clickable chip (production); the (미지정) row is a static span.
+    expect(countMatches(html, "button")).toBe(1);
+    expect(html).toContain("production");
+    expect(html).toContain("env-chip none");
+    expect(html).toContain("(미지정)");
+  });
+
+  test("share bar width tracks each row's share, and zero metrics are muted", () => {
+    const html = renderToStaticMarkup(
+      <DistributionTable labelHeader="배포 환경" columns={["이벤트", "이슈", "영향 사용자"]} rows={rows} />
+    );
+    // One share bar per row, on the first metric column.
+    expect(countMatches(html, "span")).toBeGreaterThanOrEqual(2);
+    expect(html).toContain("width:100%");
+    expect(html).toContain("width:30%");
+    // The (미지정) row's two zero metrics render with the muted class.
+    expect((html.match(/num-zero/g) ?? []).length).toBe(2);
+  });
+});
+
+describe("DistributionCard", () => {
+  const oneRow: DistributionRow[] = [
+    { key: "chrome", label: "Chrome", values: [4, 2], share: 100 }
+  ];
+
+  test("rows=null shows the spinner; with isError shows an error message", () => {
+    const loading = renderToStaticMarkup(
+      <DistributionCard title="브라우저별 분포" windowLabel="최근 24시간" labelHeader="브라우저" columns={["이벤트", "영향 사용자"]} rows={null} />
+    );
+    expect(loading).toContain("불러오는 중");
+    expect(loading).not.toContain("<table");
+
+    const errored = renderToStaticMarkup(
+      <DistributionCard title="브라우저별 분포" windowLabel="최근 24시간" labelHeader="브라우저" columns={["이벤트", "영향 사용자"]} rows={null} isError />
+    );
+    expect(errored).toContain("불러오지 못했습니다");
+  });
+
+  test("empty rows show the empty text; populated rows render the table", () => {
+    const empty = renderToStaticMarkup(
+      <DistributionCard title="브라우저별 분포" windowLabel="최근 24시간" labelHeader="브라우저" columns={["이벤트", "영향 사용자"]} rows={[]} emptyText="이 기간에 이벤트가 없습니다." />
+    );
+    expect(empty).toContain("이 기간에 이벤트가 없습니다.");
+    expect(empty).not.toContain("<table");
+
+    const filled = renderToStaticMarkup(
+      <DistributionCard title="브라우저별 분포" windowLabel="최근 24시간" labelHeader="브라우저" columns={["이벤트", "영향 사용자"]} rows={oneRow} />
+    );
+    expect(filled).toContain("env-stats");
+    expect(filled).toContain("브라우저별 분포");
+    expect(filled).toContain("최근 24시간");
+    expect(filled).toContain("Chrome");
   });
 });
 

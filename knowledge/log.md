@@ -2,6 +2,13 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-06-30 (클라이언트 분포 + 분포 카드 재설계)
+- **API 신설**: `GET /api/projects/:id/clients?window=` → `{ browsers, os }` (각 `{ name, events, issues, affectedUsers }` — `/environments`와 동일 3지표). 인제스트가 이미 `ua-parser-js`(`enrich.ts`)로 파싱해 저장한 `contexts.browser/os.name`을 SQL `GROUP BY`로 집계 → **이벤트 상세와 동일한 이름**, 읽기 시 재파싱·마이그레이션 없음. 이름 없으면 `"알 수 없음"`. `dimension`('browser'/'os')은 JSON 키로 파라미터 바인딩(A03 안전). 정렬 events DESC, name ASC.
+- **재설계(UI)**: "환경별 분포" 표가 헤더-숫자 정렬이 어긋나 가독성이 나빴음 → 재사용 컴포넌트 `DistributionTable`/`DistributionCard`(components.tsx)로 통일. 숫자 우측정렬·tabular-nums·이벤트 share 바·클릭 칩(환경은 필터 드릴인)·0값 muted. 문구 **"환경"→"배포 환경"**(배포 환경 태그임을 명확히). `IssuesPage`에 배포환경/브라우저/OS 3카드.
+- **설계 전환(리뷰 반영)**: 처음엔 커스텀 UA 정규식 파서를 새로 작성했으나 code-reviewer가 **이미 `ua-parser-js` 의존성이 있고 `enrich.ts`가 사용 중**임을 지적(재사용 사다리 위반, 이벤트 상세와 이름 불일치 위험). → 커스텀 파서 삭제하고 **저장된 contexts를 SQL 집계**하는 방식으로 전환(per-event fetch 메모리 우려도 동시 해소). 영향 사용자 폴백(id→email→username) 테스트도 추가.
+- **테스트**: `tests/clientStats.test.ts`(+3: 버킷화/정렬/버킷별 distinct·폴백 키·window·404), `dashboard/components.test.tsx`(+5: DistributionTable 칩/share/0값, DistributionCard 로딩·에러·빈·표). 전체 **240 green**, typecheck·lint·dashboard build clean. 라이브 검증: React 샘플 7d → Chrome/Windows(저장 contexts와 일치).
+- **OKF**: [프로젝트 API](/api/projects-api.md) `GET /:id/clients` 절 + 환경/clients 용어 주의 + index 갱신.
+
 ## 2026-06-29 (알림 — event_threshold cooldown 정합성)
 - **문제**: `event_threshold` 규칙이 `cooldownMinutes` 필드를 무시했다(생성 시 서비스가 null로 strip + dispatcher가 dedup에 `windowMinutes`만 사용). 측정창과 재알림 주기를 분리할 수 없었다.
 - **백엔드**: `alert-rules/service.ts` `normalizeCooldownMinutes`가 이제 `regression`+`event_threshold` 둘 다 cooldown 저장(new_issue는 1회성이라 계속 null). `notifications/service.ts` `getDedupeSince`의 event_threshold dedup 윈도를 `cooldownMinutes ?? windowMinutes`로 변경 — **하위호환**(cooldown 미설정 규칙은 기존처럼 windowMinutes 폴백), 설정 시 측정창과 독립적 재알림 주기. regression/new_issue 경로 불변.

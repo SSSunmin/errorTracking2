@@ -56,6 +56,20 @@ timestamp: 2026-06-23
   - 마이그레이션 없음 — 기존 `@@index([projectId, environment])` 활용.
 - 소유권 미보유 시 404.
 
+> **용어 주의**: 여기서 `environment`는 **배포 환경 태그**(production/staging 등, SDK가 보내는 값)다. OS·브라우저 같은 클라이언트 분류는 아래 `/clients`가 담당한다.
+
+### GET /:id/clients — 클라이언트(브라우저/OS) 분포
+window 내 이벤트를 **브라우저·OS 단위로 롤업**. PostgreSQL `GROUP BY`.
+
+- Query: `window` = `24h` | `7d`. 기본 `24h`(`/stats`와 동일 스키마).
+- 200: `{ browsers: ClientStat[], os: ClientStat[] }`, `ClientStat = { name: string, events: number, issues: number, affectedUsers: number }`.
+  - `name`=인제스트가 요청 User-Agent에서 파싱해 저장한 `contexts.browser.name`/`contexts.os.name`(예: Chrome·Mobile Safari·Chrome Headless / Windows·macOS·iOS). **이벤트 상세의 contexts와 동일한 값** — 재파싱하지 않으므로 표기 불일치가 없다.
+  - 이름이 없는 이벤트(비브라우저 클라이언트, UA 없음/미인식)는 `"알 수 없음"`으로 합산.
+  - `events`=이벤트 수, `issues`=버킷 내 distinct `issueId` 수, `affectedUsers`=버킷별 distinct 영향 사용자(`/stats`와 동일 id→email→username 폴백 키). 셋 다 버킷마다 독립 카운트(`/environments`와 동일 컬럼 구성).
+  - 정렬: 이벤트 많은 순, 동수면 이름 `ASC`.
+- **구현**: 저장된 `contexts` JSON(`enrich.ts`가 인제스트 때 `ua-parser-js`로 채움)을 SQL `GROUP BY "contexts"->'browser'->>'name'`(OS도 동일)로 집계 → 읽기 시 재파싱·마이그레이션 없음. `dimension`('browser'/'os')은 JSON 키로 파라미터 바인딩(A03 안전).
+- 소유권 미보유 시 404.
+
 ## 프로젝트 키 (DSN)
 
 키 변경(생성/회전/토글)은 **owner 역할 전용** — DSN은 SDK 인증정보. 목록 조회(GET)는 멤버 누구나.

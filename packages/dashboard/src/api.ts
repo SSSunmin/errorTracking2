@@ -128,6 +128,14 @@ export interface EnvironmentStat {
   affectedUsers: number;
 }
 
+export interface ClientStat {
+  // Browser/OS family name, or "알 수 없음" for absent/unrecognized UAs.
+  name: string;
+  events: number;
+  issues: number;
+  affectedUsers: number;
+}
+
 export type AlertChannel = "email" | "slack";
 export type AlertCondition = "new_issue" | "regression" | "event_threshold";
 
@@ -376,6 +384,11 @@ export const api = {
     window: "24h" | "7d"
   ): Promise<{ environments: EnvironmentStat[] }> =>
     request(`/api/projects/${projectId}/environments?window=${window}`),
+  getProjectClients: (
+    projectId: string,
+    window: "24h" | "7d"
+  ): Promise<{ browsers: ClientStat[]; os: ClientStat[] }> =>
+    request(`/api/projects/${projectId}/clients?window=${window}`),
   getEventSnapshot: (
     projectId: string,
     issueId: string,
