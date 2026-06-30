@@ -485,7 +485,7 @@ const CommentsSection = ({
       {ready && !comments.isError && list.length === 0 && (
         <p className="muted">코멘트 없음</p>
       )}
-      <ul className="crumbs">
+      <ul className="comments">
         {ready && list.map((comment) => {
           const canDelete = isOwner || comment.author.userId === user?.id;
           return (
@@ -514,6 +514,7 @@ const CommentsSection = ({
         })}
       </ul>
       <form
+        className="comment-form"
         onSubmit={(event) => {
           event.preventDefault();
           if (!body.trim()) {
