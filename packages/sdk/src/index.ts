@@ -1,4 +1,9 @@
 import { Client, SDK_NAME, SDK_VERSION } from "./client.js";
+import {
+  wireMapErrors,
+  type ErrorEmittingMap,
+  type MapErrorCaptureOptions
+} from "./map.js";
 import type { Breadcrumb, InitOptions, SeverityLevel } from "./types.js";
 
 export type {
@@ -9,6 +14,11 @@ export type {
   SeverityLevel,
   StackFrame
 } from "./types.js";
+export type {
+  ErrorEmittingMap,
+  MapErrorCaptureOptions,
+  MapErrorEvent
+} from "./map.js";
 export { Client, SDK_NAME, SDK_VERSION } from "./client.js";
 export { parseDsn } from "./dsn.js";
 export { parseStack } from "./stacktrace.js";
@@ -60,6 +70,29 @@ export const addBreadcrumb = (
 ): void => {
   activeClient?.addBreadcrumb(breadcrumb);
 };
+
+/**
+ * Forward a MapLibre GL / Mapbox GL map's `error` events to captureException.
+ * These errors (failed tiles, failed styles, source errors) are emitted only on
+ * the map and never reach the global handlers, so they are otherwise invisible
+ * to the SDK. Returns an unsubscribe function; excess errors are rate-limited
+ * (see MapErrorCaptureOptions) so a broken tile source can't flood ingest.
+ *
+ * Call after `init()` — before init (or after `close()`) captured errors are
+ * silently dropped, since they route through the active client. Call the
+ * returned unsubscribe when the map is removed to detach the listener.
+ */
+export const captureMapErrors = (
+  map: ErrorEmittingMap,
+  options?: MapErrorCaptureOptions
+): (() => void) =>
+  wireMapErrors(
+    map,
+    (error) => {
+      captureException(error);
+    },
+    options
+  );
 
 export const close = (): void => {
   activeClient?.close();

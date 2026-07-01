@@ -1,10 +1,10 @@
 ---
 type: Architecture
 title: 브라우저 SDK
-description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음). captureException 시 rrweb-snapshot으로 마스킹된 DOM 스냅샷 수집(captureReplay 기본 true). sessionReplay 옵션(기본 false)으로 rrweb 롤링 30초 버퍼 녹화 + fflate gzip 업로드 지원(feature C).'
+description: '@mini-sentry/sdk (packages/sdk). init/captureException/captureMessage/scope API, 전역 핸들러, breadcrumb 자동 계측, V8 스택 파싱, fetch 전송. 호스트 앱에 절대 throw하지 않는 방어 설계. tsup으로 ESM + IIFE 두 형태 빌드, <script> 태그 드롭인 지원. npm pack 으로 tarball 배포 가능(private: true 유지, publish는 막음). captureException 시 rrweb-snapshot으로 마스킹된 DOM 스냅샷 수집(captureReplay 기본 true). sessionReplay 옵션(기본 false)으로 rrweb 롤링 30초 버퍼 녹화 + fflate gzip 업로드 지원(feature C). captureMapErrors로 MapLibre/Mapbox 지도의 map.on(error)(타일·스타일 로드 실패)를 캡처 — 이 에러는 전역 핸들러가 놓치므로 통합 필수, 레이트 캡 내장.'
 resource: packages/sdk/src/index.ts
-tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack, replay, snapshot, session-replay, rrweb, fflate]
-timestamp: 2026-06-22
+tags: [sdk, browser, javascript, breadcrumbs, stacktrace, transport, iife, script-tag, loader, tarball, npm-pack, replay, snapshot, session-replay, rrweb, fflate, maplibre, mapbox, map-integration]
+timestamp: 2026-07-01
 ---
 
 # 브라우저 SDK (`@mini-sentry/sdk`)
@@ -66,7 +66,7 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 2. `document.currentScript`로 자기 자신의 `<script>` 요소를 읽고 `autoInit()`을 실행한다.
 3. `readInitOptionsFromScript`가 `data-*` 속성을 읽어 `InitOptions`를 구성하면, 내부에서 `init()`을 자동 호출한다.
 
-`window.MiniSentry`에 노출되는 API: `init` / `getClient` / `captureException` / `captureMessage` / `setUser` / `setTag` / `setContext` / `addBreadcrumb` / `close`.
+`window.MiniSentry`에 노출되는 API: `init` / `getClient` / `captureException` / `captureMapErrors` / `captureMessage` / `setUser` / `setTag` / `setContext` / `addBreadcrumb` / `close`.
 
 ### data-* 속성으로 자동 init (`packages/sdk/src/loader-options.ts`)
 
@@ -109,6 +109,7 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 | `init(options)` | SDK 초기화. 두 번 호출하면 이전 클라이언트를 닫고 교체. DSN 파싱 실패 등 오류 시 `console.error`만 하고 `null` 반환 (절대 throw 안 함) |
 | `captureException(error)` | `Error` 객체 또는 임의 값을 캡처. eventId 반환. |
 | `captureMessage(message, level?)` | 메시지 문자열 캡처. 기본 level: `info` |
+| `captureMapErrors(map, options?)` | MapLibre GL / Mapbox GL 지도의 `error` 이벤트를 `captureException`으로 전달. 해제 함수 반환. 지도 라이브러리 통합 절 참고 |
 | `setUser(user \| null)` | scope에 사용자 컨텍스트 설정/초기화 |
 | `setTag(key, value)` | scope에 태그 추가 (키/값 각 200자 상한) |
 | `setContext(key, context)` | scope에 컨텍스트 객체 추가 |
@@ -148,6 +149,45 @@ IIFE 번들의 진입점. 스크립트가 실행되는 시점에:
 `autoInstrument !== false` 일 때 자동 설치:
 - `window.addEventListener("error", ...)` — `ErrorEvent.error` 또는 `event.message`로 `captureException`
 - `window.addEventListener("unhandledrejection", ...)` — `PromiseRejectionEvent.reason`으로 `captureException`
+
+## 지도 라이브러리 통합 (`captureMapErrors`, `packages/sdk/src/map.ts`)
+
+MapLibre GL / Mapbox GL 은 **타일·스타일·소스 로드 실패를 throw 하지 않고 자기 `map.on('error')` 이벤트로만** 흘린다. 이 에러들은 `window.onerror`/`unhandledrejection`에 전혀 올라오지 않으므로 위 전역 핸들러가 **놓친다**. 실제 계측(헤드리스 Chromium + MapLibre, WebGL 2.0)으로 확인한 채널 매핑:
+
+| 시나리오 | 발화 채널 | 전역 핸들러 포착 |
+|---|---|---|
+| 지도 콜백 내부에서 throw (`map.on('load', () => { throw … })`) | `window.error` | ✅ 포착 |
+| 깨진 타일 소스(fetch 실패) | `map.on('error')` 만 (AJAXError) | ❌ 누락 |
+| 깨진 스타일 URL(로드 실패) | `map.on('error')` 만 (AJAXError) | ❌ 누락 |
+
+즉 **가장 흔한 지도 에러(타일/스타일 로드 실패)는 통합 없이는 SDK가 못 잡는다.** `captureMapErrors`가 이 간극을 메운다.
+
+### API
+
+```ts
+import { init, captureMapErrors } from '@mini-sentry/sdk';
+init({ dsn: '…' });
+
+const map = new maplibregl.Map({ /* … */ }); // 또는 mapbox-gl
+const unsubscribe = captureMapErrors(map);   // map.on('error') → captureException
+// 지도 제거 시: unsubscribe();
+```
+
+- **인자**: `map`은 `on('error', …)`/`off('error', …)`를 가진 구조적 타입(`ErrorEmittingMap`)이면 되며, maplibre-gl·mapbox-gl `Map` 인스턴스가 그대로 만족한다(직접 의존성 없음).
+- **반환**: 리스너를 떼는 해제 함수. 지도 파괴 시 호출 권장.
+- **이벤트에 `error`가 없으면** 합성 `Error`로 대체해 전달.
+
+### 레이트 캡 (`MapErrorCaptureOptions`)
+
+깨진 타일 소스 하나가 **로드 시 수십 개, 팬 하면 수백 개**의 개별 에러를 쏟는다(계측에서 단일 소스로 24건 관측). 그대로 전달하면 자체 인제스트가 홍수를 맞으므로 기본적으로 레이트 캡을 건다.
+
+| 옵션 | 타입 | 기본값 | 설명 |
+|---|---|---|---|
+| `maxPerWindow` | number | 20 | 고정(tumbling) `windowMs`당 전달 상한. 초과분은 드롭. `0` 이하면 전부 전달 |
+| `windowMs` | number | 10000 | 캡 적용 윈도(ms) |
+| `now` | () => number | `Date.now` | 테스트용 클록 주입점 |
+
+윈도는 고정(tumbling) 방식이라 경계를 걸친 버스트는 최대 ~2×`maxPerWindow`까지 통과할 수 있다(홍수 방지 목적엔 충분, 정밀 제한이 필요하면 슬라이딩으로 업그레이드). 순수 코어 `wireMapErrors(map, capture, options)`는 SDK를 import하지 않아 가짜 지도·클록으로 단위 테스트되며(`map.test.ts`), 공개 `captureMapErrors`가 이를 활성 클라이언트에 바인딩한다.
 
 ## Breadcrumb 자동 계측 (`instrumentBreadcrumbs`)
 

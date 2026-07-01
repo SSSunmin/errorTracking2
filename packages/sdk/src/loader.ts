@@ -1,6 +1,7 @@
 import {
   addBreadcrumb,
   captureException,
+  captureMapErrors,
   captureMessage,
   close,
   getClient,
@@ -15,6 +16,7 @@ const MiniSentry = {
   init,
   getClient,
   captureException,
+  captureMapErrors,
   captureMessage,
   setUser,
   setTag,
@@ -62,6 +64,7 @@ if (typeof window !== "undefined") {
 export {
   addBreadcrumb,
   captureException,
+  captureMapErrors,
   captureMessage,
   close,
   getClient,
