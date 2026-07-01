@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>MapLibre Error Channel Measurement</title>
+    <style>
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 1.5rem auto;
+        max-width: 980px;
+        padding: 0 1rem;
+      }
+
+      #map {
+        height: 360px;
+        margin: 1rem 0;
+        width: 100%;
+      }
+
+      pre {
+        background: #111;
+        color: #ddd;
+        min-height: 18rem;
+        overflow: auto;
+        padding: 1rem;
+        white-space: pre-wrap;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>MapLibre Error Channel Measurement</h1>
+    <div id="map"></div>
+    <pre id="results">Running...</pre>
+    <script type="module" src="/src/map-measure.ts"></script>
+  </body>
+</html>

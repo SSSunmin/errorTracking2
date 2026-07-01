@@ -2,6 +2,12 @@
 
 OKF 번들의 변경 이력. 최신 항목이 위.
 
+## 2026-07-01 (SDK — 지도 라이브러리 에러 통합 `captureMapErrors`)
+- **측정 근거**: 데모 앱(`examples/demo-app/map-measure.html` + `src/map-measure.ts`)에 MapLibre GL을 붙여 헤드리스 Chromium(WebGL 2.0, 시스템 Chrome + puppeteer-core)으로 에러 채널을 실측. 결과 — 지도 콜백 내부 throw만 `window.error`로 올라오고(전역 핸들러 포착), **깨진 타일·깨진 스타일 로드 실패는 `map.on('error')`로만** 발화(전역 핸들러 누락, 단일 소스로 24건 관측). 즉 통합 없이는 가장 흔한 지도 에러를 SDK가 못 잡음을 확인.
+- **SDK(`architecture/sdk`)**: 신규 순수 코어 `src/map.ts`의 `wireMapErrors(map, capture, options)`(SDK import 없음 → 가짜 지도·클록으로 단위 테스트 가능) + 공개 바인딩 `captureMapErrors(map, options?)`(`index.ts`, 활성 클라이언트의 `captureException`으로 전달, 해제 함수 반환). `map`은 구조적 타입 `ErrorEmittingMap`(maplibre-gl·mapbox-gl `Map`이 그대로 만족, 직접 의존성 0). 단일 깨진 소스의 홍수 방지를 위해 **레이트 캡**(`maxPerWindow` 기본 20 / `windowMs` 기본 10000, 고정 윈도) 내장. `<script>` 드롭인 로더(`loader.ts`)의 `window.MiniSentry`에도 노출.
+- **테스트**: `packages/sdk/src/map.test.ts` 신규 5개(에러 전달·error 없을 때 합성·레이트 캡과 윈도 리셋·`maxPerWindow<=0` 전량 전달·해제 함수). sdk 22 green, 전체 typecheck 통과.
+- **데모(`examples/demo-app`)**: maplibre-gl 의존성 추가 + 에러 채널 측정 페이지(`npm run dev` 후 `/map-measure.html` 열면 결과가 화면에 렌더). 커밋 아님.
+
 ## 2026-06-30 (프로젝트 랜딩 헬스 강화)
 - **API**: `GET /api/projects/overview?window=24h|7d` 추가. 멤버 프로젝트만 대상으로 window 내 이벤트 수와 `date_trunc` 버킷, 전체 기간 `lastEventAt`, `status="unresolved"` 열린 이슈 수를 반환한다. 프로젝트 목록, 이벤트 버킷, 마지막 이벤트, 열린 이슈 집계를 고정 쿼리 수로 수행하며 raw SQL은 Prisma tagged template/`Prisma.join`을 사용한다.
 - **대시보드**: `ProjectsPage` 카드에 24h/7d 토글, 이벤트 수, 열린 이슈 수, 마지막 이벤트 상대시각, 컴팩트 SVG 스파크라인을 추가했다. per-project `IssuesPage` 통계/분포는 변경하지 않았다.

@@ -15,7 +15,7 @@
 ### 아키텍처
 - [시스템 아키텍처](/architecture/system.md) — 모노레포·부팅·미들웨어·전체 파이프라인
 - [인증 플로우](/architecture/auth-flow.md) — JWT + 리프레시 회전·재사용 탐지
-- [브라우저 SDK](/architecture/sdk.md) — 에러 캡처·DSN·전송 방식
+- [브라우저 SDK](/architecture/sdk.md) — 에러 캡처·DSN·전송 방식, 지도 라이브러리 통합(captureMapErrors)
 - [인제스트 파이프라인](/architecture/ingestion-pipeline.md) — Ingest API → BullMQ → Worker → PostgreSQL
 - [대시보드](/architecture/dashboard.md) — React 대시보드 구조·라우트·상태 관리
 
