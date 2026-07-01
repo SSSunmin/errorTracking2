@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Mini-Sentry — 지도 에러 → 대시보드 데모</title>
+    <style>
+      body { font-family: system-ui, sans-serif; max-width: 900px; margin: 1.5rem auto; padding: 0 1rem; }
+      #map { width: 100%; height: 420px; border: 1px solid #ccc; margin: 0.75rem 0; }
+      input { width: 100%; padding: 0.5rem; margin: 0.5rem 0; box-sizing: border-box; }
+      button { padding: 0.5rem 0.8rem; margin: 0.25rem 0.5rem 0.25rem 0; cursor: pointer; }
+      button:disabled { opacity: 0.5; cursor: default; }
+      pre { background: #111; color: #0f0; padding: 1rem; border-radius: 6px; min-height: 6rem; white-space: pre-wrap; }
+    </style>
+  </head>
+  <body>
+    <h1>지도 에러 → 대시보드 데모</h1>
+    <p>
+      실제 타일이 뜨는 지도에서 <code>captureMapErrors</code>로
+      <code>map.on('error')</code>(타일·스타일 로드 실패)를 캡처해 Mini-Sentry
+      대시보드로 전송한다. DSN을 넣고 시작한 뒤, 아래 버튼으로 지도 에러를
+      유발하면 대시보드에 이슈로 뜬다.
+    </p>
+    <input id="dsn" placeholder="http://&lt;publicKey&gt;@localhost:4100/&lt;projectId&gt;" />
+    <button id="start">SDK 시작 + 지도 로드</button>
+    <div>
+      <button id="broken-style" disabled>깨진 스타일 로드 유발 (에러 1건)</button>
+      <button id="broken-tiles" disabled>깨진 타일 소스 추가 (다건 · 레이트캡)</button>
+    </div>
+    <div id="map"></div>
+    <pre id="log"></pre>
+    <script type="module" src="/src/map-demo.ts"></script>
+  </body>
+</html>
