@@ -18,6 +18,27 @@ timestamp: 2026-06-22
 3. **P2 — 소스맵 정확도/운영**: 정확도·삭제·메모리·릴리스 retention 연계 **완료**(2026-06-29 고아 소스맵 정리 통합). 오브젝트 스토리지 이전만 비차단 잔여(새 의존성 결정 필요).
 4. **P3 — 제품 기능 확장(검색/담당자/환경·릴리스/차트)**: **완료**(`affectedUsers` 이메일/유저네임 fallback까지 2026-06-29 반영).
 5. **(소) DX·테스트**: `dev-up.ps1` 견고화 등 사이사이 처리 가능한 작은 항목.
+6. **지도 에러 이미지 캡처 → 대시보드 (A안, 미착수)**: 지도 통합(`captureMapErrors`, PR #34) 후속. 아래 전용 절 참고.
+
+---
+
+## 지도 에러 이미지 캡처 → 대시보드 (A안, 미착수)
+**왜**: 지도 서비스에서 에러가 났을 때 "그 순간 지도 모습" 한 장이 있으면 디버깅에 유용. 영상 리플레이는 과함 — **정지 이미지 1장**이 목표.
+
+**배경/전제(확인됨)**:
+- 지도 **에러 자체**는 이미 잡힘: `captureMapErrors`(PR #34, `packages/sdk/src/map.ts`)가 `map.on('error')` → `captureException`.
+- 지도 **화면**은 현재 DOM 스냅샷/세션리플레이로 **못 담김** — WebGL 캔버스 미녹화(`sessionReplay.ts` `recordCanvas:false`, `replay.ts`는 recordCanvas 미설정). → 별도의 "이미지 1장" 경로가 필요.
+
+**로컬 증명 완료**(`examples/demo-app/map-image.{html,ts}`): 지도를 **`canvasContextAttributes:{preserveDrawingBuffer:true}`**(maplibre v5)로 만들면 `map.getCanvas().toDataURL('image/jpeg',0.5)`로 **실제 지도 이미지 ~13KB** 확보(끄면 avgLuma 0 검은 이미지). preserveDrawingBuffer는 **호스트 앱이 지도 생성 시** 켜야 함(성능 트레이드오프).
+
+**제약**: SDK 전송이 `keepalive:true` fetch(`packages/sdk/src/client.ts`)라 **본문 64KB 상한**. 이미지 13KB면 여유 있으나, `captureReplay`(DOM 스냅샷+CSS 인라인)는 지도 페이지에서 payload가 커져 **조용히 전송 실패**하므로 병용 주의(지도 데모는 `captureReplay:false`).
+
+**범위(3계층, 결정 필요 표시)**:
+1. **SDK**: 이미지를 이벤트에 첨부하는 경로. 현재 `captureException(error)`는 추가 컨텍스트 인자를 안 받음 → API 필요. 후보: `captureMapErrors(map,{captureImage:true,maxWidth?})`가 에러 시 캔버스를 축소·JPEG로 떠서 첨부. **[결정]** 저장 필드를 기존 `EventSnapshot`(replay 필드, `data:Json/href/width/height`) 재사용 vs 신규 필드.
+2. **서버/인제스트**: 이미지 저장. `EventSnapshot`은 현재 rrweb DOM 스냅샷 전용 — 이미지(dataURL/bytes)용으로 확장할지, 신규 경로 만들지. body 한도 2MiB·replay 필드 ≤1MiB 확인.
+3. **대시보드**: 이슈 상세에 `<img>`로 렌더. 기존 `SnapshotSection`/`SnapshotFrame`(`IssueDetailPage`)은 rrweb 재구성용 → 이미지 분기 또는 신규 섹션.
+
+**착수 방법**: `impl-planner`로 계획부터(3계층·저장 결정). 검증은 헤드리스(puppeteer-core+시스템 Chrome, swiftshader) — 메모리 `headless-browser-testing` 참고. 참고 코드: `packages/sdk/src/{map,replay,client}.ts`, `examples/demo-app/map-image.ts`(캡처 증명), `packages/server`의 EventSnapshot 파이프라인, dashboard `SnapshotSection`.
 
 ---
 
